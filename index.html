@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube 자막 검색기</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --primary-color: #ff0000;
+      --primary-dark: #cc0000;
+      --secondary-color: #4285f4;
+      --secondary-hover: #3367d6;
+      --accent-color: #34a853;
+      --bg-color: #f8f9fa;
+      --card-bg: #ffffff;
+      --text-color: #202124;
+      --text-secondary: #5f6368;
+      --border-color: #dadce0;
+      --highlight-color: rgba(255, 213, 79, 0.3);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14);
+      --shadow-md: 0 4px 6px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.08);
+      --shadow-lg: 0 10px 15px rgba(0,0,0,0.1), 0 4px 6px rgba(0,0,0,0.05);
+      --transition: all 0.3s ease;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+    }
+    
+    [data-theme="dark"] {
+      --bg-color: #202124;
+      --card-bg: #2d2e33;
+      --text-color: #e8eaed;
+      --text-secondary: #9aa0a6;
+      --border-color: #3c4043;
+      --highlight-color: rgba(255, 213, 79, 0.5);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.5);
+      --shadow-md: 0 4px 6px rgba(0,0,0,0.4);
+      --shadow-lg: 0 10px 15px rgba(0,0,0,0.4);
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      transition: var(--transition);
+    }
+    
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 30px 20px;
+    }
+    
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+      position: relative;
+    }
+    
+    .theme-toggle {
+      position: absolute;
+      top: 0;
+      right: 0;
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 5px;
+    }
+    
+    header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 15px;
+      letter-spacing: -0.5px;
+    }
+    
+    header p {
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    
+    .search-container {
+      background-color: var(--card-bg);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      padding: 30px;
+      margin-bottom: 30px;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    
+    .search-container:hover {
+      transform: translateY(-5px);
+      box-shadow: var(--shadow-lg);
+    }
+    
+    .search-form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    
+    .search-input-wrapper {
+      position: relative;
+      flex: 1;
+      min-width: 300px;
+    }
+    
+    .search-input {
+      width: 100%;
+      padding: 16px 20px 16px 50px;
+      border: 2px solid var(--border-color);
+      border-radius: var(--radius-md);
+      font-size: 16px;
+      background-color: var(--card-bg);
+      color: var(--text-color);
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    
+    .search-input:focus {
+      outline: none;
+      border-color: var(--secondary-color);
+      box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
+    }
+    
+    .search-icon {
+      position: absolute;
+      left: 18px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-secondary);
+      font-size: 18px;
+    }
+    
+    .search-btn {
+      background: linear-gradient(135deg, var(--secondary-color), var(--secondary-hover));
+      color: white;
+      border: none;
+      border-radius: var(--radius-md);
+      padding: 16px 30px;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+      transition: transform 0.2s, box-shadow 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .search-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+      background: linear-gradient(135deg, var(--secondary-hover), var(--secondary-color));
+    }
+    
+    .search-btn:active {
+      transform: translateY(0);
+    }
+    
+    .options {
+      width: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 25px;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border-color);
+      align-items: center;
+    }
+    
+    .option-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .option-group label {
+      color: var(--text-secondary);
+      font-size: 14px;
+      user-select: none;
+    }
+    
+    /* Styled select */
+    .custom-select {
+      position: relative;
+    }
+    
+    .custom-select select {
+      appearance: none;
+      padding: 8px 35px 8px 12px;
+      border: 2px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      background-color: var(--card-bg);
+      color: var(--text-color);
+      font-size: 14px;
+      cursor: pointer;
+      min-width: 120px;
+    }
+    
+    .custom-select select:focus {
+      outline: none;
+      border-color: var(--secondary-color);
+    }
+    
+    .custom-select:after {
+      content: '\f078';
+      font-family: 'Font Awesome 6 Free';
+      font-weight: 900;
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+    
+    .status {
+      margin: 15px 0;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+    
+    .progress-container {
+      margin-top: 20px;
+    }
+    
+    .progress-bar {
+      height: 6px;
+      background-color: var(--border-color);
+      border-radius: 3px;
+      overflow: hidden;
+      display: none;
+    }
+    
+    .progress {
+      height: 100%;
+      background: linear-gradient(to right, var(--secondary-color), var(--accent-color));
+      width: 0%;
+      transition: width 0.3s;
+    }
+    
+    .results-container {
+      background-color: var(--card-bg);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      padding: 30px;
+      margin-bottom: 30px;
+      display: none;
+      animation: fadeIn 0.5s ease;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .summary {
+      margin-bottom: 25px;
+      font-weight: 500;
+      font-size: 18px;
+      color: var(--text-color);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .summary i {
+      color: var(--accent-color);
+    }
+    
+    .result-group {
+      margin-bottom: 30px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 25px;
+      animation: slideIn 0.5s ease;
+      animation-fill-mode: both;
+    }
+    
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    
+    .result-group:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+      margin-bottom: 0;
+    }
+    
+    .video-title {
+      font-size: 20px;
+      font-weight: 500;
+      margin-bottom: 10px;
+      cursor: pointer;
+      color: var(--secondary-color);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: color 0.2s;
+    }
+    
+    .video-title:hover {
+      color: var(--secondary-hover);
+    }
+    
+    .video-title i {
+      font-size: 16px;
+    }
+    
+    .video-meta {
+      display: flex;
+      align-items: center;
+      margin-bottom: 15px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+    
+    .video-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    .subtitle-matches {
+      list-style-type: none;
+      display: grid;
+      gap: 15px;
+    }
+    
+    .subtitle-match {
+      background-color: rgba(0, 0, 0, 0.03);
+      border-radius: var(--radius-md);
+      padding: 15px 20px;
+      position: relative;
+      border-left: 3px solid var(--secondary-color);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    [data-theme="dark"] .subtitle-match {
+      background-color: rgba(255, 255, 255, 0.05);
+    }
+    
+    .subtitle-match:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-sm);
+    }
+    
+    .match-context {
+      font-size: 15px;
+      line-height: 1.6;
+      margin-bottom: 15px;
+      color: var(--text-color);
+    }
+    
+    .match-highlight {
+      background-color: var(--highlight-color);
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-weight: 500;
+    }
+    
+    .match-time {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background-color: var(--secondary-color);
+      color: white;
+      font-size: 12px;
+      padding: 5px 10px;
+      border-radius: 20px;
+      margin-top: 0;
+      text-decoration: none;
+      transition: background-color 0.2s;
+    }
+    
+    .match-time:hover {
+      background-color: var(--secondary-hover);
+    }
+    
+    .load-error {
+      color: #d93025;
+      padding: 20px;
+      text-align: center;
+      background-color: rgba(217, 48, 37, 0.1);
+      border-radius: var(--radius-md);
+      margin: 15px 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .load-error i {
+      font-size: 2rem;
+    }
+
+    .no-results {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-secondary);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+    }
+    
+    .no-results i {
+      font-size: 3rem;
+      color: var(--text-secondary);
+      opacity: 0.5;
+    }
+    
+    /* Responsive styles */
+    @media (max-width: 768px) {
+      .container {
+        padding: 20px 15px;
+      }
+      
+      header h1 {
+        font-size: 1.8rem;
+      }
+      
+      .search-container, .results-container {
+        padding: 20px;
+      }
+      
+      .search-form {
+        flex-direction: column;
+      }
+      
+      .search-btn {
+        width: 100%;
+        justify-content: center;
+      }
+      
+      .options {
+        flex-direction: column;
+        gap: 15px;
+      }
+      
+      .video-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+    }
+    
+    /* Animation for loading */
+    @keyframes pulse {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+    
+    .loading {
+      animation: pulse 1.5s infinite;
+    }
+
+    .match-controls {
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .load-more-btn {
+      background-color: transparent;
+      border: 1px solid var(--secondary-color);
+      color: var(--secondary-color);
+      font-size: 12px;
+      padding: 5px 10px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background-color 0.2s, color 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .load-more-btn:hover {
+      background-color: var(--secondary-color);
+      color: white;
+    }
+
+    .load-more-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .surrounding-subtitles {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px dashed var(--border-color);
+      font-size: 14px;
+      color: var(--text-secondary);
+      display: none;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .surrounding-subtitle-item {
+      margin-bottom: 8px;
+      line-height: 1.5;
+    }
+
+    .surrounding-subtitle-item.current {
+      font-weight: 500;
+      color: var(--text-color);
+    }
+
+    .surrounding-subtitle-item span {
+      display: inline-block;
+      min-width: 80px;
+      margin-right: 10px;
+      font-family: monospace;
+      color: var(--accent-color);
+    }
+
+    /* 업데이트 로그 스타일 */
+    .update-log {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      max-width: 400px;
+      background-color: var(--card-bg);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+      border: 1px solid var(--border-color);
+      z-index: 1000;
+      overflow: hidden;
+      transition: var(--transition);
+      animation: slideInFromRight 0.5s ease;
+    }
+
+    @keyframes slideInFromRight {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    .update-log.hidden {
+      transform: translateX(100%);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .update-log-header {
+      background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+      color: white;
+      padding: 12px 15px;
+      font-weight: 500;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .update-log-content {
+      padding: 15px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .update-item {
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--text-color);
+      margin-bottom: 10px;
+    }
+
+    .update-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .update-date {
+      display: inline-block;
+      background-color: var(--accent-color);
+      color: white;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      margin-right: 8px;
+      font-weight: 500;
+    }
+
+    /* 모바일에서 업데이트 로그 크기 조정 */
+    @media (max-width: 768px) {
+      .update-log {
+        bottom: 15px;
+        right: 15px;
+        max-width: 280px;
+        font-size: 12px;
+      }
+      
+      .update-log-header {
+        padding: 10px 12px;
+        font-size: 13px;
+      }
+      
+      .update-log-content {
+        padding: 12px;
+      }
+      
+      .update-item {
+        font-size: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">
+        <i class="fas fa-moon"></i>
+      </button>
+      <h1>프리미티브 라이브 영상 자막 검색기 <span style="font-size: 0.6em; color: var(--text-secondary);">by 로우</span></h1>
+      <p>다운로드한 자막 파일에서 내용을 검색하고 원하는 순간으로 이동하세요</p>
+    </header>
+    
+    <div class="search-container">
+      <div class="search-form">
+        <div class="search-input-wrapper">
+          <i class="fas fa-search search-icon"></i>
+          <input type="text" id="search-input" class="search-input" placeholder="검색어를 입력하세요">
+        </div>
+        <button id="search-btn" class="search-btn">
+          <i class="fas fa-search"></i>
+          검색
+        </button>
+      </div>
+      
+      <div class="options">
+        <div class="option-group">
+          <div class="custom-select">
+            <select id="language-filter" name="language-filter" aria-label="언어 필터">
+            </select>
+          </div>
+        </div>
+      </div>
+      
+      <div id="status" class="status"></div>
+      <div class="progress-container">
+        <div class="progress-bar" id="progress-bar">
+          <div class="progress" id="progress"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div id="results-container" class="results-container">
+      <div id="summary" class="summary"></div>
+      <div id="results"></div>
+    </div>
+  </div>
+
+  <!-- 업데이트 로그 -->
+  <div id="update-log" class="update-log">
+    <div class="update-log-header">
+      <i class="fas fa-bell"></i>
+      업데이트
+    </div>
+    <div class="update-log-content">
+      <div class="update-item">
+        <span class="update-date">2025-10-30</span>
+        프리미티브님 유튜브 영상(라이브, 편집본) 총 자막 372개를 추가하였습니다
+      </div>
+      <div class="update-item">
+        <span class="update-date">2025-06-30</span>
+        프리미티브님 유튜브 영상(라이브, 편집본) 총 자막 363개를 추가하였습니다
+      </div>
+      <div class="update-item">
+        <span class="update-date">2025-06-03</span>
+        6월 2일 라이브(6/2 소를 팔기로 했습니다. 올해 농사는... - 키토제닉/전래식단/재생농업 Q&A)를 추가하였습니다
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 전역 변수 선언
+    let mappingData = null;
+    let subtitleCache = {}; // 메모리 캐시 객체 다시 추가
+    
+    // 페이지 로드 완료 시 매핑 데이터 로드 및 초기화
+    document.addEventListener('DOMContentLoaded', () => {
+      // 다크모드 토글 버튼 설정
+      const themeToggle = document.getElementById('theme-toggle');
+      const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+      
+      // 시스템 테마 또는 저장된 설정 기반으로 초기 테마 설정
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme === 'dark' || (!savedTheme && prefersDarkScheme.matches)) {
+        document.body.setAttribute('data-theme', 'dark');
+        themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+      }
+      
+      // 테마 토글 이벤트 리스너
+      themeToggle.addEventListener('click', () => {
+        if (document.body.getAttribute('data-theme') === 'dark') {
+          document.body.removeAttribute('data-theme');
+          localStorage.setItem('theme', 'light');
+          themeToggle.innerHTML = '<i class="fas fa-moon"></i>';
+        } else {
+          document.body.setAttribute('data-theme', 'dark');
+          localStorage.setItem('theme', 'dark');
+          themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+        }
+      });
+      
+      // 매핑 데이터 로드
+      loadMappingData();
+      
+      // 업데이트 로그 5초 후 페이드 아웃
+      setTimeout(() => {
+        const updateLog = document.getElementById('update-log');
+        if (updateLog) {
+          updateLog.style.transition = 'opacity 1s ease-out';
+          updateLog.style.opacity = '0';
+          setTimeout(() => {
+            updateLog.style.display = 'none';
+          }, 1000); // 페이드 아웃 완료 후 완전히 숨김
+        }
+      }, 5000); // 5초 후 페이드 아웃 시작
+      
+      // 검색 버튼 클릭 이벤트 리스너
+      document.getElementById('search-btn').addEventListener('click', () => {
+        performSearch();
+      });
+      
+      // 엔터 키 이벤트 리스너
+      document.getElementById('search-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          performSearch();
+        }
+      });
+
+      // 결과 영역 클릭 이벤트 리스너 (이벤트 위임)
+      document.getElementById('results').addEventListener('click', (event) => {
+        if (event.target && event.target.classList.contains('load-more-btn')) {
+            const button = event.target;
+            const filepath = button.dataset.filepath;
+            const matchIndex = button.dataset.matchIndex;
+            if (filepath && matchIndex !== undefined) {
+                loadSurroundingSubtitles(button, filepath, matchIndex);
+            }
+        }
+      });
+    });
+    
+    // 매핑 데이터 로드 함수
+    async function loadMappingData() {
+      try {
+        const statusElement = document.getElementById('status');
+        statusElement.textContent = '매핑 데이터 로드 중...';
+        statusElement.classList.add('loading');
+        
+        const response = await fetch('./subtitles/subtitle_mapping.json');
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        mappingData = await response.json();
+        
+        // 언어 필터 옵션 업데이트
+        updateLanguageOptions();
+        
+        statusElement.classList.remove('loading');
+        statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${mappingData.totalVideos}개 비디오, ${mappingData.totalSubtitles}개 자막 파일이 로드되었습니다.`;
+        
+        // 자막 파일 미리 로딩 시작
+        preloadAllSubtitles();
+      } catch (error) {
+        console.error('매핑 데이터 로드 실패:', error);
+        document.getElementById('status').innerHTML = `
+          <div class="load-error">
+            <i class="fas fa-exclamation-circle"></i>
+            <div>
+              자막 매핑 데이터를 로드할 수 없습니다.
+              <br>먼저 자막 다운로더를 실행해 자막을 다운로드하세요.
+              <br><small>Error: ${error.message}</small>
+            </div>
+          </div>`;
+      }
+    }
+    
+    // 모든 자막 파일 미리 로딩 함수
+    async function preloadAllSubtitles() {
+      if (!mappingData) return;
+      
+      const statusElement = document.getElementById('status');
+      const progressBar = document.getElementById('progress-bar');
+      const progress = document.getElementById('progress');
+      
+      // 모든 자막 파일 경로 수집
+      const allSubtitlePaths = [];
+      mappingData.videos.forEach(video => {
+        video.subtitles.forEach(subtitle => {
+          if (!allSubtitlePaths.includes(subtitle.filepath)) {
+            allSubtitlePaths.push(subtitle.filepath);
+          }
+        });
+      });
+      
+      if (allSubtitlePaths.length === 0) return;
+      
+      statusElement.innerHTML = '<i class="fas fa-download"></i> 자막파일을 불러옵니다...';
+      progressBar.style.display = 'block';
+      progress.style.width = '0%';
+      
+      let loadedCount = 0;
+      const PRELOAD_BATCH_SIZE = 50; // 동시에 로드할 파일 수
+      
+      // 배치 단위로 미리 로딩
+      for (let i = 0; i < allSubtitlePaths.length; i += PRELOAD_BATCH_SIZE) {
+        const batch = allSubtitlePaths.slice(i, i + PRELOAD_BATCH_SIZE);
+        
+        await Promise.all(batch.map(async filepath => {
+          try {
+            await getParsedSubtitles(filepath);
+            loadedCount++;
+            
+            const percentage = (loadedCount / allSubtitlePaths.length) * 100;
+            progress.style.width = `${percentage}%`;
+            statusElement.innerHTML = `<i class="fas fa-download"></i> 자막파일을 불러옵니다... (${loadedCount}/${allSubtitlePaths.length})`;
+          } catch (error) {
+            console.warn(`자막 파일 미리 로딩 실패: ${filepath}`, error);
+            loadedCount++;
+          }
+        }));
+      }
+      
+      // 미리 로딩 완료
+      progressBar.style.display = 'none';
+      statusElement.innerHTML = `<i class="fas fa-check-circle"></i> 모든 자막 파일 로딩 완료! 이제 빠른 검색이 가능합니다.`;
+      
+      // 3초 후 상태 메시지를 원래대로 되돌림
+      setTimeout(() => {
+        statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${mappingData.totalVideos}개 비디오, ${mappingData.totalSubtitles}개 자막 파일이 준비되었습니다.`;
+      }, 3000);
+    }
+    
+    // 언어 필터 옵션 업데이트
+    function updateLanguageOptions() {
+      if (!mappingData) return;
+
+      const languageSet = new Set();
+
+      // 모든 비디오의 자막에서 사용된 언어 수집
+      mappingData.videos.forEach(video => {
+        video.subtitles.forEach(subtitle => {
+          languageSet.add(subtitle.language);
+        });
+      });
+
+      // 언어 선택 드롭다운 업데이트
+      const languageFilter = document.getElementById('language-filter');
+      const currentLangValue = languageFilter.value; // 현재 선택된 값 저장 (초기에는 없을 수 있음)
+
+      // 기존 옵션 초기화
+      languageFilter.innerHTML = '';
+
+      const sortedLangs = Array.from(languageSet).sort();
+
+      // 언어 옵션 추가
+      sortedLangs.forEach(lang => {
+        const option = document.createElement('option');
+        option.value = lang;
+        option.textContent = getLanguageName(lang);
+        languageFilter.appendChild(option);
+      });
+
+      // 선택 상태 복원 또는 첫 번째 언어 선택
+      if (sortedLangs.length > 0) {
+        // currentLangValue가 sortedLangs 안에 있는지 확인하고 설정
+        if (currentLangValue && sortedLangs.includes(currentLangValue)) {
+          languageFilter.value = currentLangValue;
+        } else {
+          // 기존 선택값이 없거나 유효하지 않으면 첫 번째 언어를 기본값으로 설정
+          languageFilter.value = sortedLangs[0];
+        }
+      } else {
+         // 사용 가능한 언어가 없을 경우 처리
+         const option = document.createElement('option');
+         option.textContent = "사용 가능 언어 없음";
+         option.disabled = true;
+         languageFilter.appendChild(option);
+      }
+    }
+    
+    // 언어 코드를 언어 이름으로 변환
+    function getLanguageName(langCode) {
+      const languageNames = {
+        'ko': '한국어',
+        'en': '영어',
+        'ja': '일본어',
+        'zh': '중국어',
+        'es': '스페인어',
+        'fr': '프랑스어',
+        'de': '독일어',
+        'ru': '러시아어',
+        'it': '이탈리아어',
+        'pt': '포르투갈어'
+      };
+      
+      return languageNames[langCode] || langCode;
+    }
+    
+    // 검색 실행 함수
+    async function performSearch() {
+      const searchInput = document.getElementById('search-input');
+      const keyword = searchInput.value.trim();
+      
+      if (!keyword) {
+        alert('검색어를 입력하세요.');
+        return;
+      }
+      
+      if (!mappingData) {
+        alert('매핑 데이터가 로드되지 않았습니다. 페이지를 새로고침 후 다시 시도하세요.');
+        return;
+      }
+
+      // 업데이트 로그 숨기기
+      const updateLog = document.getElementById('update-log');
+      if (updateLog) {
+        updateLog.classList.add('hidden');
+      }
+      
+      // 검색 옵션
+      const languageFilter = document.getElementById('language-filter').value;
+      
+      // UI 초기화
+      const statusElement = document.getElementById('status');
+      const progressBar = document.getElementById('progress-bar');
+      const progress = document.getElementById('progress');
+      const resultsContainer = document.getElementById('results-container');
+      const summary = document.getElementById('summary');
+      const resultsElement = document.getElementById('results');
+      
+      statusElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 검색 중...';
+      progressBar.style.display = 'block';
+      progress.style.width = '0%';
+      resultsContainer.style.display = 'none';
+      
+      // 검색 결과 저장 변수
+      const searchResults = [];
+      
+      // 처리할 자막 파일 목록 생성
+      const subtitleFiles = [];
+      mappingData.videos.forEach(video => {
+        video.subtitles.forEach(subtitle => {
+          // 언어 필터링
+          if (languageFilter === 'all' || subtitle.language === languageFilter) {
+            subtitleFiles.push({
+              videoId: video.id,
+              videoTitle: video.title,
+              subtitle: subtitle
+            });
+          }
+        });
+      });
+      
+      // 진행 상황 업데이트 함수
+      let processedCount = 0;
+      function updateProgress() {
+        processedCount++;
+        const percentage = (processedCount / subtitleFiles.length) * 100;
+        progress.style.width = `${percentage}%`;
+        statusElement.innerHTML = `<i class="fas fa-spinner fa-spin"></i> 검색 중... (${processedCount}/${subtitleFiles.length})`;
+      }
+      
+      // 병렬 처리를 위한 배치 크기
+      const BATCH_SIZE = 10;
+      
+      // 배치 단위로 처리
+      for (let i = 0; i < subtitleFiles.length; i += BATCH_SIZE) {
+        const batch = subtitleFiles.slice(i, i + BATCH_SIZE);
+        
+        // 병렬 처리
+        await Promise.all(batch.map(async file => {
+          // SRT 파일 로드 및 검색
+          const matches = await searchInSubtitle(file, keyword);
+          
+          if (matches.length > 0) {
+            searchResults.push({
+              videoId: file.videoId,
+              videoTitle: file.videoTitle,
+              subtitle: file.subtitle,
+              matches: matches
+            });
+          }
+          
+          updateProgress();
+        }));
+      }
+      
+      // 검색 완료 후 UI 업데이트
+      statusElement.innerHTML = '<i class="fas fa-check-circle"></i> 검색 완료';
+      progressBar.style.display = 'none';
+      resultsContainer.style.display = 'block';
+      
+      // 결과 표시
+      displayResults(searchResults, keyword);
+    }
+    
+    // SRT 파일 로드 및 검색 함수
+    async function searchInSubtitle(file, keyword) {
+      const filePath = file.subtitle.filepath;
+      const subtitles = await getParsedSubtitles(filePath);
+
+      if (!subtitles) {
+        return [];
+      }
+
+      const matches = [];
+      // 검색어에서 공백 제거 및 소문자 변환 (한 번만 수행)
+      const searchKeywordLowerNospace = keyword.replace(/\s+/g, '').toLowerCase();
+
+      subtitles.forEach((subtitle, index) => {
+        // 자막 텍스트에서 공백 제거 및 소문자 변환
+        const textLowerNospace = subtitle.text.replace(/\s+/g, '').toLowerCase();
+
+        // 공백 제거된 텍스트끼리 비교
+        if (textLowerNospace.includes(searchKeywordLowerNospace)) {
+          matches.push({
+            text: subtitle.text, // 원본 텍스트 저장
+            time: subtitle.time,
+            srtIndex: subtitle.index,
+            arrayIndex: index
+          });
+        }
+      });
+
+      return matches;
+    }
+    
+    // SRT 파일 파싱 함수
+    function parseSRT(content) {
+      const lines = content.split(/\r?\n/);
+      const subtitles = [];
+      
+      let index = '';
+      let time = '';
+      let text = [];
+      let isText = false;
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        
+        if (line === '') {
+          // 빈 줄이면 현재 자막 항목 저장
+          if (index && time && text.length > 0) {
+            subtitles.push({
+              index: index,
+              time: time,
+              text: text.join(' ').replace(/\s+/g, ' ').trim()
+            });
+          }
+          
+          // 초기화
+          index = '';
+          time = '';
+          text = [];
+          isText = false;
+        } else if (!index) {
+          // 첫 번째 줄은 인덱스
+          if (/^\d+$/.test(line)) {
+            index = line;
+          }
+        } else if (!time) {
+          // 두 번째 줄은 시간
+          if (line.includes('-->')) {
+            time = line;
+          }
+        } else {
+          // 세 번째 줄부터는 텍스트
+          text.push(line);
+          isText = true;
+        }
+      }
+      
+      // 마지막 자막 항목 저장
+      if (index && time && text.length > 0) {
+        subtitles.push({
+          index: index,
+          time: time,
+          text: text.join(' ').replace(/\s+/g, ' ').trim()
+        });
+      }
+      
+      return subtitles;
+    }
+    
+    // 검색 결과 표시 함수
+    function displayResults(results, keyword) {
+      const resultsElement = document.getElementById('results');
+      const summaryElement = document.getElementById('summary');
+      
+      // 결과 요약
+      const totalMatches = results.reduce((sum, result) => sum + result.matches.length, 0);
+      
+      if (results.length === 0) {
+        summaryElement.innerHTML = '<i class="fas fa-info-circle"></i> 검색 결과가 없습니다.';
+        resultsElement.innerHTML = `
+          <div class="no-results">
+            <i class="fas fa-search"></i>
+            <p>"${keyword}" 에 대한 검색 결과가 없습니다.<br>다른 검색어로 다시 시도해보세요.</p>
+          </div>`;
+        return;
+      }
+      
+      summaryElement.innerHTML = `<i class="fas fa-check-circle"></i> ${results.length}개 비디오에서 ${totalMatches}개의 일치하는 자막을 찾았습니다.`;
+      
+      // 결과 HTML 생성
+      let resultsHTML = '';
+      
+      results.forEach((result, videoIndex) => {
+        resultsHTML += `
+          <div class="result-group" style="animation-delay: ${videoIndex * 0.1}s">
+            <div class="video-title" onclick="window.open('https://youtube.com/watch?v=${result.videoId}', '_blank')">
+              <i class="fab fa-youtube"></i>
+              ${result.videoTitle}
+            </div>
+            <div class="video-meta">
+              <div class="video-meta-item">
+                <i class="fas fa-fingerprint"></i>
+                ${result.videoId}
+              </div>
+              <div class="video-meta-item">
+                <i class="fas fa-language"></i>
+                ${getLanguageName(result.subtitle.language)}
+              </div>
+              <div class="video-meta-item">
+                <i class="fas fa-closed-captioning"></i>
+                ${result.matches.length}개 자막에서
+              </div>
+            </div>
+            <ul class="subtitle-matches">
+        `;
+        
+        result.matches.forEach((match, matchIndex) => {
+          // 하이라이트: 사용자가 입력한 원본 keyword를 기준으로 대소문자 무시하고 찾음
+          // 예를 들어 keyword가 "스테아르산"이면, match.text에서 "스테아르산"을 찾아 하이라이트
+          // 만약 match.text가 "스테아 르산"이고 keyword가 "스테아르산"이면, 하이라이트되지 않음
+          const regex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+          const highlightedText = match.text.replace(regex, `<span class="match-highlight">$&</span>`);
+
+          const timeStart = match.time.split(' --> ')[0];
+          const seconds = convertTimeToSeconds(timeStart);
+
+          resultsHTML += `
+            <li class="subtitle-match" style="animation-delay: ${videoIndex * 0.1 + matchIndex * 0.05}s">
+              <div class="match-context">${highlightedText}</div>
+              <div class="match-controls">
+                <a href="https://youtube.com/watch?v=${result.videoId}&t=${Math.floor(seconds)}" target="_blank" class="match-time">
+                  <i class="fas fa-play"></i>
+                  ${timeStart}
+                </a>
+                <button class="load-more-btn"
+                        data-filepath="${result.subtitle.filepath}"
+                        data-match-index="${match.arrayIndex}">
+                  <i class="fas fa-ellipsis-h"></i> 자막 더 보기
+                </button>
+              </div>
+              <div class="surrounding-subtitles"></div>
+            </li>
+          `;
+        });
+        
+        resultsHTML += `
+            </ul>
+          </div>
+        `;
+      });
+      
+      resultsElement.innerHTML = resultsHTML;
+    }
+    
+    // 타임코드를 초로 변환하는 함수
+    function convertTimeToSeconds(timeString) {
+      // 00:00:00,000 형식을 파싱
+      const parts = timeString.split(':');
+      const seconds = parts[2].split(',');
+      
+      return (
+        parseInt(parts[0]) * 3600 +
+        parseInt(parts[1]) * 60 +
+        parseFloat(`${seconds[0]}.${seconds[1]}`)
+      );
+    }
+
+    // 주변 자막 로드 함수
+    async function loadSurroundingSubtitles(buttonElement, filepath, matchArrayIndexStr) {
+        const matchArrayIndex = parseInt(matchArrayIndexStr, 10);
+        const surroundingDiv = buttonElement.closest('.subtitle-match').querySelector('.surrounding-subtitles');
+
+        if (!surroundingDiv) return;
+
+        buttonElement.disabled = true;
+        buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 로딩 중...';
+        surroundingDiv.innerHTML = '';
+        surroundingDiv.style.display = 'block';
+
+        const subtitles = await getParsedSubtitles(filepath);
+
+        if (!subtitles) {
+            surroundingDiv.innerHTML = '<p style="color: var(--primary-dark);">주변 자막을 불러오는 데 실패했습니다.</p>';
+            buttonElement.innerHTML = '<i class="fas fa-exclamation-circle"></i> 로드 실패';
+            return;
+        }
+
+        let surroundingHTML = '';
+        const startIndex = Math.max(0, matchArrayIndex - 5);
+        const endIndex = Math.min(subtitles.length - 1, matchArrayIndex + 5);
+
+        for (let i = startIndex; i <= endIndex; i++) {
+            const sub = subtitles[i];
+            const timeStart = sub.time.split(' --> ')[0];
+            const isCurrent = i === matchArrayIndex;
+            surroundingHTML += `
+                <div class="surrounding-subtitle-item ${isCurrent ? 'current' : ''}">
+                    <span>${timeStart}</span> ${sub.text}
+                </div>
+            `;
+        }
+
+        surroundingDiv.innerHTML = surroundingHTML;
+        buttonElement.innerHTML = '<i class="fas fa-check-circle"></i> 로드 완료';
+    }
+
+    // 자막 데이터 가져오기 및 캐싱 함수 (메모리 캐시 사용)
+    async function getParsedSubtitles(filepath) {
+        // 1. 메모리 캐시 확인
+        if (subtitleCache[filepath]) {
+            // console.log(`Memory cache hit for: ${filepath}`);
+            return subtitleCache[filepath];
+        }
+
+        // 2. 캐시 없으면 파일 로드 및 파싱
+        try {
+            // console.log(`Memory cache miss for: ${filepath}. Fetching...`);
+            const response = await fetch(filepath);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const content = await response.text();
+            const subtitles = parseSRT(content);
+
+            // 3. 메모리 캐시에 저장
+            subtitleCache[filepath] = subtitles;
+
+            return subtitles;
+        } catch (error) {
+            console.error(`파일 로드 또는 파싱 실패: ${filepath}`, error);
+            return null; // 실패 시 null 반환
+        }
+    }
+  </script>
+</body>
+</html> 
