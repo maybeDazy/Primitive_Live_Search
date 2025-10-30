@@ -843,9 +843,9 @@
             await getParsedSubtitles(filepath);
             loadedCount++;
             
-            const percentage = (loadedCount / allSubtitlePaths.length + 1) * 100;
+            const percentage = (loadedCount / allSubtitlePaths.length) * 100;
             progress.style.width = `${percentage}%`;
-            statusElement.innerHTML = `<i class="fas fa-download"></i> 자막파일을 불러옵니다... (${loadedCount}/${allSubtitlePaths.length})`;
+            statusElement.innerHTML = `<i class="fas fa-download"></i> 자막파일을 불러옵니다... (${loadedCount}/${allSubtitlePaths.length} + 1)`;
           } catch (error) {
             console.warn(`자막 파일 미리 로딩 실패: ${filepath}`, error);
             loadedCount++;
