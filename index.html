@@ -845,7 +845,7 @@
             
             const percentage = (loadedCount / allSubtitlePaths.length) * 100;
             progress.style.width = `${percentage}%`;
-            statusElement.innerHTML = `<i class="fas fa-download"></i> 자막파일을 불러옵니다... (${loadedCount}/${allSubtitlePaths.length} + 1)`;
+            statusElement.innerHTML = `<i class="fas fa-download"></i> 자막파일을 불러옵니다... (${loadedCount}/${allSubtitlePaths.length})`;
           } catch (error) {
             console.warn(`자막 파일 미리 로딩 실패: ${filepath}`, error);
             loadedCount++;
