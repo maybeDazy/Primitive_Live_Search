@@ -737,6 +737,9 @@
           <i class="fas fa-robot"></i> AI Q&A 검색
         </button>
       </div>
+      <div id="ai-disclaimer" style="display: none; font-size: 13px; color: var(--text-secondary); margin-bottom: 15px; padding: 10px; background-color: rgba(66, 133, 244, 0.1); border-radius: var(--radius-sm); border-left: 3px solid var(--secondary-color);">
+        <i class="fas fa-info-circle"></i> <b>참고용 안내:</b> AI Q&A 데이터는 자동 추출된 내용으로 실제 영상 내용과 완벽히 일치하지 않거나 부정확할 수 있습니다. 정확한 내용은 영상과 자막을 통해 다시 한번 확인해 주시기 바랍니다.
+      </div>
       <div class="search-form">
         <div class="search-input-wrapper">
           <i class="fas fa-search search-icon"></i>
@@ -839,11 +842,14 @@
           currentSearchMode = tab.dataset.mode;
           
           const languageFilter = document.getElementById('language-filter').closest('.option-group');
+          const aiDisclaimer = document.getElementById('ai-disclaimer');
           if (currentSearchMode === 'ai') {
             languageFilter.style.display = 'none';
+            aiDisclaimer.style.display = 'block';
             document.getElementById('search-input').placeholder = 'AI가 추출한 문답에서 검색하세요';
           } else {
             languageFilter.style.display = 'flex';
+            aiDisclaimer.style.display = 'none';
             document.getElementById('search-input').placeholder = '자막 내용에서 검색어를 입력하세요';
           }
         });
@@ -1292,9 +1298,8 @@
       return matches;
     }
     
-    // SRT/VTT 파일 파싱 함수
+    // SRT/VTT 파일 파싱 함수 (중복 제거 로직 추가)
     function parseSRT(content) {
-      // VTT 포맷인 경우 WEBVTT 헤더 및 메타데이터 제거
       let isVTT = content.trim().startsWith('WEBVTT');
       const lines = content.split(/\r?\n/);
       const subtitles = [];
@@ -1302,65 +1307,51 @@
       let index = '';
       let time = '';
       let text = [];
+      let lastText = ''; // 마지막 추가된 텍스트 저장용
       
       for (let i = 0; i < lines.length; i++) {
         let line = lines[i].trim();
         
-        // VTT 헤더 라인 스킵
         if (isVTT && (line.startsWith('WEBVTT') || line.startsWith('Kind:') || line.startsWith('Language:'))) {
           continue;
         }
 
         if (line === '') {
-          // 빈 줄이면 현재 자막 항목 저장
           if (time && text.length > 0) {
-            // 태그 제거 및 정리
             const cleanedText = text.join(' ')
-              .replace(/<[^>]+>/g, '') // HTML/VTT 태그 제거 (e.g. <00:00:01.000>, <c>)
+              .replace(/<[^>]+>/g, '') 
               .replace(/\s+/g, ' ')
               .trim();
             
-            if (cleanedText) {
-              subtitles.push({
-                index: index || (subtitles.length + 1).toString(),
-                time: time.split(' ')[0] + ' --> ' + time.split(' ')[2], // 메타데이터(align 등) 제거
-                text: cleanedText
-              });
+            // 중복 제거: 이전 문장과 내용이 같거나, 이전 문장이 현재 문장에 포함되는 경우 스킵 또는 업데이트
+            if (cleanedText && cleanedText !== lastText) {
+              // 유튜브 자동자막의 '누적형' 텍스트 처리: 이전 문장이 현재 문장의 시작부분과 같다면 이전 것을 지우고 현재 것으로 대체 가능하나, 
+              // 여기서는 단순 중복이나 포함 관계만 체크하여 리스트를 간결하게 만듭니다.
+              if (!lastText || !cleanedText.startsWith(lastText)) {
+                subtitles.push({
+                  index: index || (subtitles.length + 1).toString(),
+                  time: time.split(' ')[0] + ' --> ' + (time.split(' ')[2] || time.split(' ')[0]),
+                  text: cleanedText
+                });
+                lastText = cleanedText;
+              } else if (subtitles.length > 0 && cleanedText.startsWith(lastText)) {
+                // 이전 문장이 현재 문장의 시작일 경우, 시간만 업데이트하거나 교체
+                subtitles[subtitles.length - 1].text = cleanedText;
+                lastText = cleanedText;
+              }
             }
           }
-          
-          // 초기화
           index = '';
           time = '';
           text = [];
         } else if (!time && line.includes('-->')) {
-          // 시간 라인 확인 (VTT의 경우 밀리초 구분자가 . 일 수 있음)
           time = line.replace(/\./g, ','); 
         } else if (!time && /^\d+$/.test(line)) {
-          // 인덱스 번호 (SRT용)
           index = line;
         } else if (time) {
-          // 시간 라인 이후는 텍스트
           text.push(line);
         }
       }
-      
-      // 마지막 자막 항목 저장
-      if (time && text.length > 0) {
-        const cleanedText = text.join(' ')
-          .replace(/<[^>]+>/g, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-        
-        if (cleanedText) {
-          subtitles.push({
-            index: index || (subtitles.length + 1).toString(),
-            time: time.split(' ')[0] + ' --> ' + time.split(' ')[2],
-            text: cleanedText
-          });
-        }
-      }
-      
       return subtitles;
     }
     
@@ -1388,6 +1379,9 @@
       let resultsHTML = '';
       
       results.forEach((result, videoIndex) => {
+        // ZIP 내부 파일 경로는 폴더 구조 없이 파일명만 있을 수 있으므로 매칭 보강
+        const displayFilepath = result.subtitle.filepath;
+        
         resultsHTML += `
           <div class="result-group" style="animation-delay: ${videoIndex * 0.1}s">
             <div class="video-title" onclick="window.open('https://youtube.com/watch?v=${result.videoId}', '_blank')">
@@ -1421,6 +1415,7 @@
           const timeStart = match.time.split(' --> ')[0];
           const seconds = convertTimeToSeconds(timeStart);
 
+          // ZIP 캐시가 있으면 fetch를 하지 않도록 data-filepath를 캐시 키와 일치시킴
           resultsHTML += `
             <li class="subtitle-match" style="animation-delay: ${videoIndex * 0.1 + matchIndex * 0.05}s">
               <div class="match-context">${highlightedText}</div>
@@ -1430,7 +1425,7 @@
                   ${timeStart}
                 </a>
                 <button class="load-more-btn"
-                        data-filepath="${result.subtitle.filepath}"
+                        data-filepath="${displayFilepath}"
                         data-match-index="${match.arrayIndex}">
                   <i class="fas fa-ellipsis-h"></i> 자막 더 보기
                 </button>
