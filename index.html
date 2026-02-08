@@ -804,8 +804,15 @@
     // 전역 변수 선언
     let mappingData = null;
     let aiDataset = null;
-    let subtitleCache = {}; // 메모리 캐시 객체 다시 추가
-    let currentSearchMode = 'subtitle'; // 'subtitle' 또는 'ai'
+    let subtitleCache = {}; 
+    let currentSearchMode = 'subtitle'; 
+    
+    // 무한 스크롤(지연 로딩) 관련 변수
+    let currentResults = [];
+    let currentKeyword = '';
+    let resultsPage = 0;
+    const RESULTS_PER_PAGE = 30; // 한 번에 표시할 비디오(그룹) 수
+    let resultsObserver = null;
     
     // 페이지 로드 완료 시 매핑 데이터 로드 및 초기화
     document.addEventListener('DOMContentLoaded', () => {
@@ -1371,12 +1378,21 @@
       return subtitles;
     }
     
-    // 검색 결과 표시 함수
+    // 검색 결과 표시 함수 (지연 로딩 적용)
     function displayResults(results, keyword) {
       const resultsElement = document.getElementById('results');
       const summaryElement = document.getElementById('summary');
       
-      // 결과 요약
+      // 상태 초기화
+      currentResults = results;
+      currentKeyword = keyword;
+      resultsPage = 0;
+      resultsElement.innerHTML = '';
+      
+      if (resultsObserver) {
+        resultsObserver.disconnect();
+      }
+      
       const totalMatches = results.reduce((sum, result) => sum + result.matches.length, 0);
       
       if (results.length === 0) {
@@ -1391,15 +1407,32 @@
       
       summaryElement.innerHTML = `<i class="fas fa-check-circle"></i> ${results.length}개 비디오에서 ${totalMatches}개의 일치하는 자막을 찾았습니다.`;
       
-      // 결과 HTML 생성
-      let resultsHTML = '';
+      // 첫 번째 배치 렌더링
+      renderNextBatch();
       
-      results.forEach((result, videoIndex) => {
-        // ZIP 내부 파일 경로는 ./subtitles/ 로 시작하는 매핑 데이터와 일치해야 함
+      // 무한 스크롤 관찰자 설정
+      resultsObserver = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && (resultsPage * RESULTS_PER_PAGE) < currentResults.length) {
+          renderNextBatch();
+        }
+      }, { rootMargin: '200px' });
+    }
+
+    // 다음 결과 배치 렌더링 함수
+    function renderNextBatch() {
+      const resultsElement = document.getElementById('results');
+      const startIndex = resultsPage * RESULTS_PER_PAGE;
+      const endIndex = Math.min(startIndex + RESULTS_PER_PAGE, currentResults.length);
+      const batch = currentResults.slice(startIndex, endIndex);
+      
+      let batchHTML = '';
+      
+      batch.forEach((result, batchVideoIndex) => {
+        const videoIndex = startIndex + batchVideoIndex;
         const displayFilepath = result.subtitle.filepath;
         
-        resultsHTML += `
-          <div class="result-group" style="animation-delay: ${videoIndex * 0.1}s">
+        batchHTML += `
+          <div class="result-group" style="animation-delay: ${(batchVideoIndex % RESULTS_PER_PAGE) * 0.1}s">
             <div class="video-title" onclick="window.open('https://youtube.com/watch?v=${result.videoId}', '_blank')">
               <i class="fab fa-youtube"></i>
               ${result.videoTitle}
@@ -1422,18 +1455,13 @@
         `;
         
         result.matches.forEach((match, matchIndex) => {
-          // 하이라이트: 사용자가 입력한 원본 keyword를 기준으로 대소문자 무시하고 찾음
-          // 예를 들어 keyword가 "스테아르산"이면, match.text에서 "스테아르산"을 찾아 하이라이트
-          // 만약 match.text가 "스테아 르산"이고 keyword가 "스테아르산"이면, 하이라이트되지 않음
-          const regex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+          const regex = new RegExp(currentKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
           const highlightedText = match.text.replace(regex, `<span class="match-highlight">$&</span>`);
-
           const timeStart = match.time.split(' --> ')[0];
           const seconds = convertTimeToSeconds(timeStart);
 
-          // ZIP 캐시가 있으면 fetch를 하지 않도록 data-filepath를 캐시 키와 일치시킴
-          resultsHTML += `
-            <li class="subtitle-match" style="animation-delay: ${videoIndex * 0.1 + matchIndex * 0.05}s">
+          batchHTML += `
+            <li class="subtitle-match" style="animation-delay: ${(batchVideoIndex % RESULTS_PER_PAGE) * 0.1 + matchIndex * 0.05}s">
               <div class="match-context">${highlightedText}</div>
               <div class="match-controls">
                 <a href="https://youtube.com/watch?v=${result.videoId}&t=${Math.floor(seconds)}" target="_blank" class="match-time">
@@ -1451,13 +1479,37 @@
           `;
         });
         
-        resultsHTML += `
+        batchHTML += `
             </ul>
           </div>
         `;
       });
       
-      resultsElement.innerHTML = resultsHTML;
+      // 기존 로딩 트리거 제거
+      const oldTrigger = document.getElementById('load-more-trigger');
+      if (oldTrigger) oldTrigger.remove();
+      
+      // 결과 추가
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = batchHTML;
+      while (tempDiv.firstChild) {
+        resultsElement.appendChild(tempDiv.firstChild);
+      }
+      
+      resultsPage++;
+      
+      // 다음 배치가 더 있다면 트리거 추가
+      if ((resultsPage * RESULTS_PER_PAGE) < currentResults.length) {
+        const trigger = document.createElement('div');
+        trigger.id = 'load-more-trigger';
+        trigger.style.height = '50px';
+        trigger.style.display = 'flex';
+        trigger.style.alignItems = 'center';
+        trigger.style.justifyContent = 'center';
+        trigger.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 결과를 더 불러오는 중...';
+        resultsElement.appendChild(trigger);
+        resultsObserver.observe(trigger);
+      }
     }
     
     // 타임코드를 초로 변환하는 함수
