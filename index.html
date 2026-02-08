@@ -6,6 +6,7 @@
   <title>YouTube 자막 검색기</title>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
     :root {
       --primary-color: #ff0000;
@@ -778,6 +779,10 @@
     </div>
     <div class="update-log-content">
       <div class="update-item">
+        <span class="update-date">2026-02-08</span>
+        프리미티브님 유튜브 영상 총 자막 381개 및 AI Q&A 검색 기능을 추가하였습니다
+      </div>
+      <div class="update-item">
         <span class="update-date">2025-10-30</span>
         프리미티브님 유튜브 영상(라이브, 편집본) 총 자막 372개를 추가하였습니다
       </div>
@@ -930,7 +935,7 @@
       }
     }
     
-    // 모든 자막 파일 미리 로딩 함수
+    // 모든 자막 파일 미리 로딩 함수 (ZIP 압축 해제 지원)
     async function preloadAllSubtitles() {
       if (!mappingData) return;
       
@@ -938,7 +943,42 @@
       const progressBar = document.getElementById('progress-bar');
       const progress = document.getElementById('progress');
       
-      // 모든 자막 파일 경로 수집
+      statusElement.innerHTML = '<i class="fas fa-download"></i> 자막 압축 파일을 불러옵니다...';
+      progressBar.style.display = 'block';
+      progress.style.width = '0%';
+
+      try {
+        // 1. 먼저 subtitles.zip 시도
+        const response = await fetch('./subtitles/subtitles.zip');
+        if (response.ok) {
+          const zipBlob = await response.blob();
+          const zip = await JSZip.loadAsync(zipBlob);
+          
+          let loadedCount = 0;
+          const files = Object.keys(zip.files).filter(name => name.endsWith('.srt') || name.endsWith('.vtt'));
+          
+          for (const filename of files) {
+            const content = await zip.files[filename].async('string');
+            const subtitles = parseSRT(content);
+            // 매핑 데이터의 filepath 형식(./subtitles/001.srt)에 맞춰 키 저장
+            const cacheKey = `./subtitles/${filename}`;
+            subtitleCache[cacheKey] = subtitles;
+            
+            loadedCount++;
+            const percentage = (loadedCount / files.length) * 100;
+            progress.style.width = `${percentage}%`;
+            statusElement.innerHTML = `<i class="fas fa-file-archive"></i> 압축 해제 중... (${loadedCount}/${files.length})`;
+          }
+          
+          progressBar.style.display = 'none';
+          statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${mappingData.totalVideos}개 비디오, 압축 파일 로드 완료.`;
+          return;
+        }
+      } catch (error) {
+        console.warn('ZIP 로드 실패, 개별 파일 로딩으로 전환합니다:', error);
+      }
+
+      // 2. ZIP 실패 시 기존 개별 파일 로딩 방식 (Fallback)
       const allSubtitlePaths = [];
       mappingData.videos.forEach(video => {
         video.subtitles.forEach(subtitle => {
@@ -950,14 +990,11 @@
       
       if (allSubtitlePaths.length === 0) return;
       
-      statusElement.innerHTML = '<i class="fas fa-download"></i> 자막파일을 불러옵니다...';
-      progressBar.style.display = 'block';
-      progress.style.width = '0%';
+      statusElement.innerHTML = '<i class="fas fa-download"></i> 개별 자막파일을 불러옵니다...';
       
       let loadedCount = 0;
-      const PRELOAD_BATCH_SIZE = 50; // 동시에 로드할 파일 수
+      const PRELOAD_BATCH_SIZE = 50; 
       
-      // 배치 단위로 미리 로딩
       for (let i = 0; i < allSubtitlePaths.length; i += PRELOAD_BATCH_SIZE) {
         const batch = allSubtitlePaths.slice(i, i + PRELOAD_BATCH_SIZE);
         
@@ -976,14 +1013,8 @@
         }));
       }
       
-      // 미리 로딩 완료
       progressBar.style.display = 'none';
-      
-      let statusMsg = '';
-      if (mappingData) statusMsg += `${mappingData.totalVideos}개 비디오, ${mappingData.totalSubtitles}개 자막 파일 준비 완료. `;
-      if (aiDataset) statusMsg += `AI Q&A 데이터 ${aiDataset.length}개 준비 완료.`;
-      
-      statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${statusMsg}`;
+      statusElement.innerHTML = `<i class="fas fa-check-circle"></i> 로드 완료.`;
     }
     
     // 언어 필터 옵션 업데이트
@@ -1261,58 +1292,73 @@
       return matches;
     }
     
-    // SRT 파일 파싱 함수
+    // SRT/VTT 파일 파싱 함수
     function parseSRT(content) {
+      // VTT 포맷인 경우 WEBVTT 헤더 및 메타데이터 제거
+      let isVTT = content.trim().startsWith('WEBVTT');
       const lines = content.split(/\r?\n/);
       const subtitles = [];
       
       let index = '';
       let time = '';
       let text = [];
-      let isText = false;
       
       for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
+        let line = lines[i].trim();
         
+        // VTT 헤더 라인 스킵
+        if (isVTT && (line.startsWith('WEBVTT') || line.startsWith('Kind:') || line.startsWith('Language:'))) {
+          continue;
+        }
+
         if (line === '') {
           // 빈 줄이면 현재 자막 항목 저장
-          if (index && time && text.length > 0) {
-            subtitles.push({
-              index: index,
-              time: time,
-              text: text.join(' ').replace(/\s+/g, ' ').trim()
-            });
+          if (time && text.length > 0) {
+            // 태그 제거 및 정리
+            const cleanedText = text.join(' ')
+              .replace(/<[^>]+>/g, '') // HTML/VTT 태그 제거 (e.g. <00:00:01.000>, <c>)
+              .replace(/\s+/g, ' ')
+              .trim();
+            
+            if (cleanedText) {
+              subtitles.push({
+                index: index || (subtitles.length + 1).toString(),
+                time: time.split(' ')[0] + ' --> ' + time.split(' ')[2], // 메타데이터(align 등) 제거
+                text: cleanedText
+              });
+            }
           }
           
           // 초기화
           index = '';
           time = '';
           text = [];
-          isText = false;
-        } else if (!index) {
-          // 첫 번째 줄은 인덱스
-          if (/^\d+$/.test(line)) {
-            index = line;
-          }
-        } else if (!time) {
-          // 두 번째 줄은 시간
-          if (line.includes('-->')) {
-            time = line;
-          }
-        } else {
-          // 세 번째 줄부터는 텍스트
+        } else if (!time && line.includes('-->')) {
+          // 시간 라인 확인 (VTT의 경우 밀리초 구분자가 . 일 수 있음)
+          time = line.replace(/\./g, ','); 
+        } else if (!time && /^\d+$/.test(line)) {
+          // 인덱스 번호 (SRT용)
+          index = line;
+        } else if (time) {
+          // 시간 라인 이후는 텍스트
           text.push(line);
-          isText = true;
         }
       }
       
       // 마지막 자막 항목 저장
-      if (index && time && text.length > 0) {
-        subtitles.push({
-          index: index,
-          time: time,
-          text: text.join(' ').replace(/\s+/g, ' ').trim()
-        });
+      if (time && text.length > 0) {
+        const cleanedText = text.join(' ')
+          .replace(/<[^>]+>/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        
+        if (cleanedText) {
+          subtitles.push({
+            index: index || (subtitles.length + 1).toString(),
+            time: time.split(' ')[0] + ' --> ' + time.split(' ')[2],
+            text: cleanedText
+          });
+        }
       }
       
       return subtitles;
@@ -1405,15 +1451,21 @@
     
     // 타임코드를 초로 변환하는 함수
     function convertTimeToSeconds(timeString) {
-      // 00:00:00,000 형식을 파싱
-      const parts = timeString.split(':');
-      const seconds = parts[2].split(',');
+      // 00:00:00,000 또는 00:00,000 형식 유연하게 파싱
+      const timePart = timeString.split(',')[0];
+      const msPart = timeString.split(',')[1] || "000";
       
-      return (
-        parseInt(parts[0]) * 3600 +
-        parseInt(parts[1]) * 60 +
-        parseFloat(`${seconds[0]}.${seconds[1]}`)
-      );
+      const parts = timePart.split(':').reverse();
+      let seconds = 0;
+      
+      // 초
+      if (parts[0]) seconds += parseInt(parts[0], 10);
+      // 분
+      if (parts[1]) seconds += parseInt(parts[1], 10) * 60;
+      // 시
+      if (parts[2]) seconds += parseInt(parts[2], 10) * 3600;
+      
+      return seconds + (parseInt(msPart, 10) / 1000);
     }
 
     // 주변 자막 로드 함수
