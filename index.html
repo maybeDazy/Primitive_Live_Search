@@ -954,7 +954,6 @@
       progress.style.width = '0%';
 
       try {
-        // 1. 먼저 subtitles.zip 시도
         const response = await fetch('./subtitles/subtitles.zip');
         if (response.ok) {
           const zipBlob = await response.blob();
@@ -966,8 +965,12 @@
           for (const filename of files) {
             const content = await zip.files[filename].async('string');
             const subtitles = parseSRT(content);
-            // 매핑 데이터의 filepath 형식(./subtitles/001.srt)에 맞춰 키 저장
-            const cacheKey = `./subtitles/${filename}`;
+            // 매핑 데이터의 filepath와 동일한 키 형식으로 저장 (예: "./subtitles/001.srt")
+            // ZIP 안에 파일명만 있는 경우를 대비해 처리
+            const cacheKey = filename.startsWith('./') ? filename : 
+                             filename.startsWith('subtitles/') ? `./${filename}` : 
+                             `./subtitles/${filename}`;
+                             
             subtitleCache[cacheKey] = subtitles;
             
             loadedCount++;
@@ -978,7 +981,7 @@
           
           progressBar.style.display = 'none';
           statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${mappingData.totalVideos}개 비디오, 압축 파일 로드 완료.`;
-          return;
+          return; // 성공 시 종료
         }
       } catch (error) {
         console.warn('ZIP 로드 실패, 개별 파일 로딩으로 전환합니다:', error);
@@ -1379,7 +1382,7 @@
       let resultsHTML = '';
       
       results.forEach((result, videoIndex) => {
-        // ZIP 내부 파일 경로는 폴더 구조 없이 파일명만 있을 수 있으므로 매칭 보강
+        // ZIP 내부 파일 경로는 ./subtitles/ 로 시작하는 매핑 데이터와 일치해야 함
         const displayFilepath = result.subtitle.filepath;
         
         resultsHTML += `
