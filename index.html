@@ -477,6 +477,90 @@
       animation: pulse 1.5s infinite;
     }
 
+    /* AI Q&A Styles */
+    .search-tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .search-tab {
+      padding: 10px 20px;
+      border-radius: var(--radius-md);
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-weight: 500;
+      transition: var(--transition);
+    }
+
+    .search-tab.active {
+      background-color: var(--secondary-color);
+      color: white;
+      border-color: var(--secondary-color);
+    }
+
+    .qa-result-item {
+      background-color: var(--card-bg);
+      border-radius: var(--radius-md);
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid var(--border-color);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .qa-result-item:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .qa-question {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--secondary-color);
+      margin-bottom: 12px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .qa-question i {
+      margin-top: 4px;
+    }
+
+    .qa-answer {
+      font-size: 15px;
+      line-height: 1.6;
+      color: var(--text-color);
+      margin-bottom: 15px;
+      padding-left: 28px;
+    }
+
+    .qa-source {
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-top: 1px solid var(--border-color);
+      padding-top: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .qa-source-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--accent-color);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .qa-source-link:hover {
+      text-decoration: underline;
+    }
+
     .match-controls {
       margin-top: 12px;
       display: flex;
@@ -644,6 +728,14 @@
     </header>
     
     <div class="search-container">
+      <div class="search-tabs">
+        <button class="search-tab active" data-mode="subtitle">
+          <i class="fas fa-closed-captioning"></i> 자막 검색
+        </button>
+        <button class="search-tab" data-mode="ai">
+          <i class="fas fa-robot"></i> AI Q&A 검색
+        </button>
+      </div>
       <div class="search-form">
         <div class="search-input-wrapper">
           <i class="fas fa-search search-icon"></i>
@@ -703,7 +795,9 @@
   <script>
     // 전역 변수 선언
     let mappingData = null;
+    let aiDataset = null;
     let subtitleCache = {}; // 메모리 캐시 객체 다시 추가
+    let currentSearchMode = 'subtitle'; // 'subtitle' 또는 'ai'
     
     // 페이지 로드 완료 시 매핑 데이터 로드 및 초기화
     document.addEventListener('DOMContentLoaded', () => {
@@ -731,8 +825,27 @@
         }
       });
       
+      // 탭 전환 이벤트 리스너
+      const tabs = document.querySelectorAll('.search-tab');
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          tabs.forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          currentSearchMode = tab.dataset.mode;
+          
+          const languageFilter = document.getElementById('language-filter').closest('.option-group');
+          if (currentSearchMode === 'ai') {
+            languageFilter.style.display = 'none';
+            document.getElementById('search-input').placeholder = 'AI가 추출한 문답에서 검색하세요';
+          } else {
+            languageFilter.style.display = 'flex';
+            document.getElementById('search-input').placeholder = '자막 내용에서 검색어를 입력하세요';
+          }
+        });
+      });
+
       // 매핑 데이터 로드
-      loadMappingData();
+      loadInitialData();
       
       // 업데이트 로그 5초 후 페이드 아웃
       setTimeout(() => {
@@ -771,36 +884,46 @@
       });
     });
     
-    // 매핑 데이터 로드 함수
-    async function loadMappingData() {
+    // 초기 데이터 로드 함수
+    async function loadInitialData() {
+      const statusElement = document.getElementById('status');
+      statusElement.textContent = '데이터 로드 중...';
+      statusElement.classList.add('loading');
+
       try {
-        const statusElement = document.getElementById('status');
-        statusElement.textContent = '매핑 데이터 로드 중...';
-        statusElement.classList.add('loading');
-        
-        const response = await fetch('./subtitles/subtitle_mapping.json');
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+        // 병렬로 데이터 로드
+        const [mappingRes, aiRes] = await Promise.all([
+          fetch('./subtitles/subtitle_mapping.json'),
+          fetch('./refined_dataset.json')
+        ]);
+
+        if (mappingRes.ok) {
+          mappingData = await mappingRes.json();
+          updateLanguageOptions();
         }
-        
-        mappingData = await response.json();
-        
-        // 언어 필터 옵션 업데이트
-        updateLanguageOptions();
-        
+
+        if (aiRes.ok) {
+          aiDataset = await aiRes.json();
+        }
+
         statusElement.classList.remove('loading');
-        statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${mappingData.totalVideos}개 비디오, ${mappingData.totalSubtitles}개 자막 파일이 로드되었습니다.`;
+        
+        let statusMsg = '';
+        if (mappingData) statusMsg += `${mappingData.totalVideos}개 비디오 준비 완료. `;
+        if (aiDataset) statusMsg += `AI Q&A 데이터 ${aiDataset.length}개 준비 완료.`;
+        
+        statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${statusMsg}`;
         
         // 자막 파일 미리 로딩 시작
-        preloadAllSubtitles();
+        if (mappingData) preloadAllSubtitles();
+
       } catch (error) {
-        console.error('매핑 데이터 로드 실패:', error);
-        document.getElementById('status').innerHTML = `
+        console.error('데이터 로드 실패:', error);
+        statusElement.innerHTML = `
           <div class="load-error">
             <i class="fas fa-exclamation-circle"></i>
             <div>
-              자막 매핑 데이터를 로드할 수 없습니다.
-              <br>먼저 자막 다운로더를 실행해 자막을 다운로드하세요.
+              데이터를 로드할 수 없습니다.
               <br><small>Error: ${error.message}</small>
             </div>
           </div>`;
@@ -855,12 +978,12 @@
       
       // 미리 로딩 완료
       progressBar.style.display = 'none';
-      statusElement.innerHTML = `<i class="fas fa-check-circle"></i> 모든 자막 파일 로딩 완료! 이제 빠른 검색이 가능합니다.`;
       
-      // 3초 후 상태 메시지를 원래대로 되돌림
-      setTimeout(() => {
-        statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${mappingData.totalVideos}개 비디오, ${mappingData.totalSubtitles}개 자막 파일이 준비되었습니다.`;
-      }, 3000);
+      let statusMsg = '';
+      if (mappingData) statusMsg += `${mappingData.totalVideos}개 비디오, ${mappingData.totalSubtitles}개 자막 파일 준비 완료. `;
+      if (aiDataset) statusMsg += `AI Q&A 데이터 ${aiDataset.length}개 준비 완료.`;
+      
+      statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${statusMsg}`;
     }
     
     // 언어 필터 옵션 업데이트
@@ -936,6 +1059,11 @@
       
       if (!keyword) {
         alert('검색어를 입력하세요.');
+        return;
+      }
+
+      if (currentSearchMode === 'ai') {
+        performAISearch(keyword);
         return;
       }
       
@@ -1025,6 +1153,81 @@
       
       // 결과 표시
       displayResults(searchResults, keyword);
+    }
+
+    // AI Q&A 검색 실행 함수
+    function performAISearch(keyword) {
+      if (!aiDataset) {
+        alert('AI Q&A 데이터가 로드되지 않았습니다.');
+        return;
+      }
+
+      const statusElement = document.getElementById('status');
+      const resultsContainer = document.getElementById('results-container');
+      const resultsElement = document.getElementById('results');
+      const summary = document.getElementById('summary');
+
+      statusElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AI Q&A 검색 중...';
+      resultsContainer.style.display = 'none';
+
+      const searchKeywordLower = keyword.toLowerCase().replace(/\s+/g, '');
+      const results = aiDataset.filter(item => {
+        return item.question.toLowerCase().replace(/\s+/g, '').includes(searchKeywordLower) ||
+               item.answer.toLowerCase().replace(/\s+/g, '').includes(searchKeywordLower);
+      });
+
+      statusElement.innerHTML = '<i class="fas fa-check-circle"></i> 검색 완료';
+      resultsContainer.style.display = 'block';
+      displayAIResults(results, keyword);
+    }
+
+    // AI Q&A 결과 표시 함수
+    function displayAIResults(results, keyword) {
+      const resultsElement = document.getElementById('results');
+      const summaryElement = document.getElementById('summary');
+
+      if (results.length === 0) {
+        summaryElement.innerHTML = '<i class="fas fa-info-circle"></i> 검색 결과가 없습니다.';
+        resultsElement.innerHTML = `
+          <div class="no-results">
+            <i class="fas fa-search"></i>
+            <p>"${keyword}" 에 대한 Q&A 검색 결과가 없습니다.<br>다른 검색어로 다시 시도해보세요.</p>
+          </div>`;
+        return;
+      }
+
+      summaryElement.innerHTML = `<i class="fas fa-robot"></i> ${results.length}개의 AI Q&A 결과를 찾았습니다.`;
+
+      const regex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+
+      let html = '';
+      results.forEach((item, index) => {
+        const highlightedQuestion = item.question.replace(regex, `<span class="match-highlight">$&</span>`);
+        const highlightedAnswer = item.answer.replace(regex, `<span class="match-highlight">$&</span>`);
+
+        html += `
+          <div class="qa-result-item" style="animation-delay: ${index * 0.05}s">
+            <div class="qa-question">
+              <i class="fas fa-question-circle"></i>
+              <div>${highlightedQuestion}</div>
+            </div>
+            <div class="qa-answer">
+              ${highlightedAnswer}
+            </div>
+            <div class="qa-source">
+              <div class="video-meta-item">
+                <i class="fab fa-youtube"></i>
+                ${item.source.video_title}
+              </div>
+              <a href="${item.source.url}" target="_blank" class="qa-source-link">
+                <i class="fas fa-external-link-alt"></i> 영상 이동 (${item.source.timestamp})
+              </a>
+            </div>
+          </div>
+        `;
+      });
+
+      resultsElement.innerHTML = html;
     }
     
     // SRT 파일 로드 및 검색 함수
