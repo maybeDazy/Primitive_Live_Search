@@ -1097,6 +1097,9 @@
       const searchInput = document.getElementById('search-input');
       const keyword = searchInput.value.trim();
       
+      console.log('현재 캐시 상태:', Object.keys(subtitleCache).length, '개 파일 로드됨');
+      console.log('캐시 키 샘플:', Object.keys(subtitleCache).slice(0, 5));
+      
       if (!keyword) {
         alert('검색어를 입력하세요.');
         return;
@@ -1273,10 +1276,14 @@
     // SRT 파일 로드 및 검색 함수
     async function searchInSubtitle(file, keyword) {
       const filePath = file.subtitle.filepath;
-      const subtitles = await getParsedSubtitles(filePath);
+      
+      // 캐시 확인 시 경로 정규화 (./ 제거 등)
+      const normalizedPath = filePath.startsWith('./') ? filePath : `./${filePath}`;
+      const subtitles = subtitleCache[normalizedPath] || subtitleCache[filePath];
 
       if (!subtitles) {
-        return [];
+        console.warn(`캐시 미스: ${filePath} 를 서버에서 직접 불러옵니다.`);
+        return await getParsedSubtitles(filePath) ? await searchInSubtitle(file, keyword) : [];
       }
 
       const matches = [];
