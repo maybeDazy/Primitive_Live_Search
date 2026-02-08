@@ -1277,34 +1277,40 @@
     async function searchInSubtitle(file, keyword) {
       const filePath = file.subtitle.filepath;
       
-      // 캐시 확인 시 경로 정규화 (./ 제거 등)
-      const normalizedPath = filePath.startsWith('./') ? filePath : `./${filePath}`;
-      const subtitles = subtitleCache[normalizedPath] || subtitleCache[filePath];
+      // 경로 정규화 (역슬래시를 슬래시로 변환, ./ 추가 등)
+      let normalizedPath = filePath.replace(/\\/g, '/');
+      if (!normalizedPath.startsWith('./')) {
+        normalizedPath = `./${normalizedPath}`;
+      }
+      
+      const subtitles = subtitleCache[normalizedPath];
 
       if (!subtitles) {
-        console.warn(`캐시 미스: ${filePath} 를 서버에서 직접 불러옵니다.`);
-        return await getParsedSubtitles(filePath) ? await searchInSubtitle(file, keyword) : [];
+        console.warn(`캐시 미스 [${normalizedPath}]: 서버에서 직접 불러옵니다.`);
+        const loadedSubtitles = await getParsedSubtitles(filePath);
+        if (!loadedSubtitles) return [];
+        return performSearchInArray(loadedSubtitles, keyword);
       }
 
+      return performSearchInArray(subtitles, keyword);
+    }
+
+    // 배열 내 검색 로직 분리
+    function performSearchInArray(subtitles, keyword) {
       const matches = [];
-      // 검색어에서 공백 제거 및 소문자 변환 (한 번만 수행)
       const searchKeywordLowerNospace = keyword.replace(/\s+/g, '').toLowerCase();
 
       subtitles.forEach((subtitle, index) => {
-        // 자막 텍스트에서 공백 제거 및 소문자 변환
         const textLowerNospace = subtitle.text.replace(/\s+/g, '').toLowerCase();
-
-        // 공백 제거된 텍스트끼리 비교
         if (textLowerNospace.includes(searchKeywordLowerNospace)) {
           matches.push({
-            text: subtitle.text, // 원본 텍스트 저장
+            text: subtitle.text,
             time: subtitle.time,
             srtIndex: subtitle.index,
             arrayIndex: index
           });
         }
       });
-
       return matches;
     }
     
