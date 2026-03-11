@@ -77,7 +77,8 @@ function isSkippableYtDlpError(error) {
     msg.includes('members-only') ||
     msg.includes('confirm your age') ||
     msg.includes('video unavailable') ||
-    msg.includes('private video')
+    msg.includes('private video') ||
+    msg.includes('자막 파일 누락')
   );
 }
 
@@ -141,14 +142,18 @@ async function fetchAllVideos(uploadsPlaylistId) {
       const title = item.snippet?.title;
       const publishedAt = item.snippet?.publishedAt;
       if (!videoId || !title) continue;
-      videos.push({ videoId, title, publishedAt });
+      videos.push({
+        videoId,
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        title,
+        publishedAt
+      });
     }
 
     pageToken = json.nextPageToken;
     if (!pageToken) break;
   }
 
-  videos.sort((a, b) => new Date(a.publishedAt) - new Date(b.publishedAt));
   return videos;
 }
 
@@ -164,6 +169,21 @@ function nextSubtitleNumber(mappingData) {
 
 function ytDlpBinary() {
   return process.env.YT_DLP_BIN || 'yt-dlp';
+}
+
+
+function findDownloadedSubtitleFile(basename) {
+  const files = fs.readdirSync(SUBTITLES_DIR);
+  const vttCandidates = files.filter((name) => name.startsWith(`${basename}.`) && name.endsWith('.vtt'));
+  if (vttCandidates.length === 0) return null;
+
+  const exactKo = vttCandidates.find((name) => name === `${basename}.${SUB_LANG}.vtt`);
+  if (exactKo) return path.join(SUBTITLES_DIR, exactKo);
+
+  const koFamily = vttCandidates.find((name) => name.startsWith(`${basename}.${SUB_LANG}-`));
+  if (koFamily) return path.join(SUBTITLES_DIR, koFamily);
+
+  return path.join(SUBTITLES_DIR, vttCandidates[0]);
 }
 
 async function downloadSubtitle(videoId, number) {
@@ -187,11 +207,11 @@ async function downloadSubtitle(videoId, number) {
 
   await runCommand(command, args);
 
-  const candidate = path.join(SUBTITLES_DIR, `${basename}.${SUB_LANG}.vtt`);
+  const candidate = findDownloadedSubtitleFile(basename);
   const target = path.join(SUBTITLES_DIR, `${basename}.srt`);
 
-  if (!fs.existsSync(candidate)) {
-    throw new Error(`자막 파일 누락: ${path.basename(candidate)}`);
+  if (!candidate) {
+    throw new Error(`자막 파일 누락: ${basename}.*.vtt`);
   }
 
   fs.renameSync(candidate, target);
@@ -222,19 +242,55 @@ async function rebuildZip() {
   ]);
 }
 
+
+function extractVideoIdFromUrl(url) {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.includes('youtube.com')) {
+      return parsed.searchParams.get('v') || '';
+    }
+    if (parsed.hostname === 'youtu.be') {
+      return parsed.pathname.replace('/', '').trim();
+    }
+    return '';
+  } catch {
+    return '';
+  }
+}
+
+function buildKnownVideoKeySet(mapping) {
+  const keys = new Set();
+  for (const video of mapping.videos || []) {
+    const id = (video.id || '').trim();
+    if (id) {
+      keys.add(id);
+      keys.add(`https://www.youtube.com/watch?v=${id}`);
+    }
+
+    const url = (video.url || '').trim();
+    if (url) {
+      keys.add(url);
+      const urlId = extractVideoIdFromUrl(url);
+      if (urlId) keys.add(urlId);
+    }
+  }
+  return keys;
+}
+
 async function main() {
   const mapping = readJson(MAPPING_PATH);
-  const knownVideoIds = new Set((mapping.videos || []).map((v) => v.id));
+  const knownVideoKeys = buildKnownVideoKeySet(mapping);
 
   const uploadsPlaylistId = await fetchUploadsPlaylistId(CHANNEL_ID);
   const allVideos = await fetchAllVideos(uploadsPlaylistId);
 
   const cutoffDate = new Date(Date.now() - MIN_VIDEO_AGE_DAYS * 24 * 60 * 60 * 1000);
   const eligibleNewVideos = allVideos.filter((v) => {
-    if (knownVideoIds.has(v.videoId)) return false;
+    if (knownVideoKeys.has(v.videoId) || knownVideoKeys.has(v.url)) return false;
     if (!v.publishedAt) return false;
     return new Date(v.publishedAt) <= cutoffDate;
-  });
+  }).sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
 
   if (eligibleNewVideos.length === 0) {
     console.log(`처리 가능한 신규 영상 없음 (업로드 ${MIN_VIDEO_AGE_DAYS}일 경과 기준).`);

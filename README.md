@@ -9,11 +9,12 @@
 
 ### 동작 순서
 1. YouTube Data API로 채널 업로드 목록을 조회
-2. `subtitles/subtitle_mapping.json`에 없는 신규 영상 ID만 추림
-3. 업로드 후 최소 7일이 지난 신규 영상만 `yt-dlp`로 한국어 자동 자막(`ko`) 다운로드
+2. `subtitles/subtitle_mapping.json`(id/url)과 대조해 이미 등록된 영상은 즉시 스킵
+3. 업로드 후 최소 7일이 지난 신규 영상을 최신 업로드부터(내림차순) `yt-dlp`로 한국어 자동 자막(`ko`) 다운로드
 4. `subtitles/NNN.srt` 추가 및 매핑 JSON 갱신
 5. `index.html` 업데이트 로그에 당일 자동 업데이트 항목 추가
 6. `subtitles/subtitles.zip` 재생성
+- 일부 영상에서 자동 자막 파일이 생성되지 않거나 접근 제한이 있는 경우, 해당 영상은 건너뛰고 나머지 처리를 계속합니다.
 
 ### GitHub 설정
 Repository Secret에 아래 값을 추가하세요.
