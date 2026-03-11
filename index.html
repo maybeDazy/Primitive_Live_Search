@@ -806,6 +806,13 @@
     let aiDataset = null;
     let subtitleCache = {}; 
     let currentSearchMode = 'subtitle'; 
+
+    // IndexedDB 자막 영구 캐시 설정
+    const SUBTITLE_DB_NAME = 'primitiveSubtitleCache';
+    const SUBTITLE_DB_VERSION = 1;
+    const SUBTITLE_STORE_NAME = 'parsedSubtitles';
+    const SUBTITLE_META_STORE_NAME = 'cacheMeta';
+    const SUBTITLE_CACHE_VERSION = 'v1';
     
     // 무한 스크롤(지연 로딩) 관련 변수
     let currentResults = [];
@@ -901,6 +908,97 @@
         }
       });
     });
+
+    function getSubtitleCacheSignature() {
+      const totalVideos = mappingData?.totalVideos || mappingData?.videos?.length || 0;
+      return `${SUBTITLE_CACHE_VERSION}-${totalVideos}`;
+    }
+
+    async function openSubtitleCacheDB() {
+      if (!('indexedDB' in window)) return null;
+
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(SUBTITLE_DB_NAME, SUBTITLE_DB_VERSION);
+
+        request.onupgradeneeded = (event) => {
+          const db = event.target.result;
+          if (!db.objectStoreNames.contains(SUBTITLE_STORE_NAME)) {
+            db.createObjectStore(SUBTITLE_STORE_NAME, { keyPath: 'filepath' });
+          }
+          if (!db.objectStoreNames.contains(SUBTITLE_META_STORE_NAME)) {
+            db.createObjectStore(SUBTITLE_META_STORE_NAME, { keyPath: 'key' });
+          }
+        };
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function loadPersistentSubtitleCache(signature) {
+      const db = await openSubtitleCacheDB();
+      if (!db) return null;
+
+      return new Promise((resolve) => {
+        const tx = db.transaction([SUBTITLE_STORE_NAME, SUBTITLE_META_STORE_NAME], 'readonly');
+        const subtitleStore = tx.objectStore(SUBTITLE_STORE_NAME);
+        const metaStore = tx.objectStore(SUBTITLE_META_STORE_NAME);
+
+        const metaRequest = metaStore.get('meta');
+        metaRequest.onsuccess = () => {
+          const meta = metaRequest.result;
+          if (!meta || meta.signature !== signature) {
+            resolve(null);
+            return;
+          }
+
+          const allRequest = subtitleStore.getAll();
+          allRequest.onsuccess = () => {
+            const records = allRequest.result || [];
+            const cache = {};
+            records.forEach((record) => {
+              cache[record.filepath] = record.subtitles;
+            });
+            resolve(cache);
+          };
+          allRequest.onerror = () => resolve(null);
+        };
+
+        metaRequest.onerror = () => resolve(null);
+        tx.oncomplete = () => db.close();
+        tx.onerror = () => resolve(null);
+      });
+    }
+
+    async function savePersistentSubtitleCache(signature, subtitlesByPath) {
+      const db = await openSubtitleCacheDB();
+      if (!db) return;
+
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction([SUBTITLE_STORE_NAME, SUBTITLE_META_STORE_NAME], 'readwrite');
+        const subtitleStore = tx.objectStore(SUBTITLE_STORE_NAME);
+        const metaStore = tx.objectStore(SUBTITLE_META_STORE_NAME);
+
+        subtitleStore.clear();
+
+        Object.entries(subtitlesByPath).forEach(([filepath, subtitles]) => {
+          subtitleStore.put({ filepath, subtitles });
+        });
+
+        metaStore.put({
+          key: 'meta',
+          signature,
+          cachedAt: Date.now(),
+          fileCount: Object.keys(subtitlesByPath).length
+        });
+
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      });
+    }
     
     // 초기 데이터 로드 함수
     async function loadInitialData() {
@@ -956,8 +1054,26 @@
       const progressBar = document.getElementById('progress-bar');
       const progress = document.getElementById('progress');
       
-      statusElement.innerHTML = '<i class="fas fa-download"></i> 자막 압축 파일을 불러옵니다...';
+      statusElement.innerHTML = '<i class="fas fa-database"></i> 저장된 자막 캐시를 확인 중...';
       progressBar.style.display = 'block';
+      progress.style.width = '0%';
+
+      const cacheSignature = getSubtitleCacheSignature();
+      try {
+        const persistedCache = await loadPersistentSubtitleCache(cacheSignature);
+        if (persistedCache && Object.keys(persistedCache).length > 0) {
+          subtitleCache = persistedCache;
+          progress.style.width = '100%';
+          progressBar.style.display = 'none';
+          statusElement.innerHTML = `<i class="fas fa-bolt"></i> 캐시에서 자막 ${Object.keys(persistedCache).length}개를 즉시 로드했습니다.`;
+          console.log(`IndexedDB cache hit: ${Object.keys(persistedCache).length} files loaded.`);
+          return;
+        }
+      } catch (cacheError) {
+        console.warn('영구 캐시 확인 실패, 네트워크 로딩으로 진행합니다:', cacheError);
+      }
+
+      statusElement.innerHTML = '<i class="fas fa-download"></i> 자막 압축 파일을 불러옵니다...';
       progress.style.width = '0%';
 
       try {
@@ -986,6 +1102,12 @@
             statusElement.innerHTML = `<i class="fas fa-file-archive"></i> 압축 해제 중... (${loadedCount}/${files.length})`;
           }
           
+          try {
+            await savePersistentSubtitleCache(cacheSignature, subtitleCache);
+          } catch (persistError) {
+            console.warn('영구 캐시 저장 실패:', persistError);
+          }
+
           progressBar.style.display = 'none';
           statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${mappingData.totalVideos}개 비디오, 압축 파일 로드 완료.`;
           return; // 성공 시 종료
@@ -1029,6 +1151,12 @@
         }));
       }
       
+      try {
+        await savePersistentSubtitleCache(cacheSignature, subtitleCache);
+      } catch (persistError) {
+        console.warn('영구 캐시 저장 실패:', persistError);
+      }
+
       progressBar.style.display = 'none';
       statusElement.innerHTML = `<i class="fas fa-check-circle"></i> 로드 완료.`;
     }
@@ -1407,15 +1535,15 @@
       
       summaryElement.innerHTML = `<i class="fas fa-check-circle"></i> ${results.length}개 비디오에서 ${totalMatches}개의 일치하는 자막을 찾았습니다.`;
       
-      // 첫 번째 배치 렌더링
-      renderNextBatch();
-      
       // 무한 스크롤 관찰자 설정
       resultsObserver = new IntersectionObserver((entries) => {
         if (entries[0].isIntersecting && (resultsPage * RESULTS_PER_PAGE) < currentResults.length) {
           renderNextBatch();
         }
       }, { rootMargin: '200px' });
+
+      // 첫 번째 배치 렌더링
+      renderNextBatch();
     }
 
     // 다음 결과 배치 렌더링 함수
@@ -1508,7 +1636,9 @@
         trigger.style.justifyContent = 'center';
         trigger.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 결과를 더 불러오는 중...';
         resultsElement.appendChild(trigger);
-        resultsObserver.observe(trigger);
+        if (resultsObserver) {
+          resultsObserver.observe(trigger);
+        }
       }
     }
     
