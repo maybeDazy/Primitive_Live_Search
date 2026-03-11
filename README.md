@@ -22,15 +22,16 @@ Repository Secret에 아래 값을 추가하세요.
 - `YOUTUBE_API_KEY`: YouTube Data API v3 키 (GitHub Secret로만 관리, 소스에 하드코딩 금지)
 - `MIN_VIDEO_AGE_DAYS`: 자막 다운로드 시도 최소 경과일 (기본값 7)
 - `YT_DLP_PROXY` (선택): yt-dlp용 프록시 URL (예: `socks5://user:pass@host:port`)
+- `RETRY_WITHOUT_PROXY_ON_BLOCK` (선택): `true`(기본값)이면 프록시 경로에서 봇 차단/400 실패 시 무프록시 1회 재시도
 
 ### 수동 실행
 ```bash
-YOUTUBE_API_KEY=YOUR_KEY MIN_VIDEO_AGE_DAYS=7 YT_DLP_PROXY=socks5://user:pass@host:port node scripts/auto_update_subtitles.mjs
+YOUTUBE_API_KEY=YOUR_KEY MIN_VIDEO_AGE_DAYS=7 YT_DLP_PROXY=socks5://user:pass@host:port RETRY_WITHOUT_PROXY_ON_BLOCK=true node scripts/auto_update_subtitles.mjs
 ```
 
 테스트 모드(파일 미반영):
 ```bash
-YOUTUBE_API_KEY=YOUR_KEY MIN_VIDEO_AGE_DAYS=7 YT_DLP_PROXY=socks5://user:pass@host:port node scripts/auto_update_subtitles.mjs --dry-run
+YOUTUBE_API_KEY=YOUR_KEY MIN_VIDEO_AGE_DAYS=7 YT_DLP_PROXY=socks5://user:pass@host:port RETRY_WITHOUT_PROXY_ON_BLOCK=true node scripts/auto_update_subtitles.mjs --dry-run
 ```
 
 
@@ -54,3 +55,6 @@ node scripts/auto_update_subtitles.mjs --dry-run
 
 
 GitHub Actions에서도 같은 방식으로 `YT_DLP_PROXY`를 Repository Secret으로 추가하면 노출 없이 프록시를 사용할 수 있습니다.
+
+
+참고: 다운로드 임시 출력 템플릿은 `번호-비디오ID` 형태를 사용합니다. 그래서 한 영상 실패가 다른 영상 파일명과 충돌하지 않습니다.

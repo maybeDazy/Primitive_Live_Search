@@ -39,6 +39,7 @@ const SUB_LANG = process.env.SUBTITLE_LANG || 'ko';
 const DRY_RUN = process.argv.includes('--dry-run');
 const MIN_VIDEO_AGE_DAYS = Number.parseInt(process.env.MIN_VIDEO_AGE_DAYS || '7', 10);
 const YT_DLP_PROXY = process.env.YT_DLP_PROXY || '';
+const RETRY_WITHOUT_PROXY_ON_BLOCK = process.env.RETRY_WITHOUT_PROXY_ON_BLOCK !== 'false';
 
 if (!API_KEY) {
   throw new Error('YOUTUBE_API_KEY 환경변수가 필요합니다.');
@@ -79,6 +80,16 @@ function isSkippableYtDlpError(error) {
     msg.includes('video unavailable') ||
     msg.includes('private video') ||
     msg.includes('자막 파일 누락')
+  );
+}
+
+
+function isProxyRetryableYtDlpError(error) {
+  const msg = String(error?.message || '').toLowerCase();
+  return (
+    msg.includes("sign in to confirm you're not a bot") ||
+    msg.includes('precondition check failed') ||
+    msg.includes('http error 400')
   );
 }
 
@@ -172,15 +183,15 @@ function ytDlpBinary() {
 }
 
 
-function findDownloadedSubtitleFile(basename) {
+function findDownloadedSubtitleFile(outputStem) {
   const files = fs.readdirSync(SUBTITLES_DIR);
-  const vttCandidates = files.filter((name) => name.startsWith(`${basename}.`) && name.endsWith('.vtt'));
+  const vttCandidates = files.filter((name) => name.startsWith(`${outputStem}.`) && name.endsWith('.vtt'));
   if (vttCandidates.length === 0) return null;
 
-  const exactKo = vttCandidates.find((name) => name === `${basename}.${SUB_LANG}.vtt`);
+  const exactKo = vttCandidates.find((name) => name === `${outputStem}.${SUB_LANG}.vtt`);
   if (exactKo) return path.join(SUBTITLES_DIR, exactKo);
 
-  const koFamily = vttCandidates.find((name) => name.startsWith(`${basename}.${SUB_LANG}-`));
+  const koFamily = vttCandidates.find((name) => name.startsWith(`${outputStem}.${SUB_LANG}-`));
   if (koFamily) return path.join(SUBTITLES_DIR, koFamily);
 
   return path.join(SUBTITLES_DIR, vttCandidates[0]);
@@ -188,30 +199,45 @@ function findDownloadedSubtitleFile(basename) {
 
 async function downloadSubtitle(videoId, number) {
   const basename = String(number).padStart(3, '0');
-  const outputTpl = path.join(SUBTITLES_DIR, basename);
+  const outputStem = `${basename}-${videoId}`;
+  const outputTpl = path.join(SUBTITLES_DIR, outputStem);
   const command = ytDlpBinary();
 
-  const args = [
-    '--skip-download',
-    '--write-auto-sub',
-    '--sub-lang', SUB_LANG,
-    '--sub-format', 'vtt',
-    '--output', outputTpl,
-    `https://www.youtube.com/watch?v=${videoId}`
-  ];
+  const buildArgs = (useProxy) => {
+    const args = [
+      '--skip-download',
+      '--write-auto-sub',
+      '--sub-lang', SUB_LANG,
+      '--sub-format', 'vtt',
+      '--extractor-args', 'youtube:player_client=android,web',
+      '--output', outputTpl,
+      `https://www.youtube.com/watch?v=${videoId}`
+    ];
 
-  if (YT_DLP_PROXY) {
-    args.unshift(YT_DLP_PROXY);
-    args.unshift('--proxy');
+    if (useProxy && YT_DLP_PROXY) {
+      args.unshift(YT_DLP_PROXY);
+      args.unshift('--proxy');
+    }
+
+    return args;
+  };
+
+  try {
+    await runCommand(command, buildArgs(true));
+  } catch (error) {
+    if (YT_DLP_PROXY && RETRY_WITHOUT_PROXY_ON_BLOCK && isProxyRetryableYtDlpError(error)) {
+      console.warn(`프록시 경로 실패, 무프록시 1회 재시도: ${videoId}`);
+      await runCommand(command, buildArgs(false));
+    } else {
+      throw error;
+    }
   }
 
-  await runCommand(command, args);
-
-  const candidate = findDownloadedSubtitleFile(basename);
+  const candidate = findDownloadedSubtitleFile(outputStem);
   const target = path.join(SUBTITLES_DIR, `${basename}.srt`);
 
   if (!candidate) {
-    throw new Error(`자막 파일 누락: ${basename}.*.vtt`);
+    throw new Error(`자막 파일 누락: ${outputStem}.*.vtt`);
   }
 
   fs.renameSync(candidate, target);
@@ -304,13 +330,16 @@ async function main() {
   const skippedVideos = [];
 
   for (const video of eligibleNewVideos) {
-    const filename = `${String(nextNum).padStart(3, '0')}.srt`;
+    const currentNum = nextNum;
+    nextNum += 1;
+
+    const filename = `${String(currentNum).padStart(3, '0')}.srt`;
     const filePath = path.join(SUBTITLES_DIR, filename);
 
     try {
       if (!DRY_RUN) {
         if (!fs.existsSync(filePath)) {
-          await downloadSubtitle(video.videoId, nextNum);
+          await downloadSubtitle(video.videoId, currentNum);
         }
       }
 
@@ -325,7 +354,6 @@ async function main() {
         }]
       });
 
-      nextNum += 1;
     } catch (error) {
       if (isSkippableYtDlpError(error)) {
         console.warn(`건너뜀 [${video.videoId}] ${video.title}: ${String(error.message).split('\n')[0]}`);
