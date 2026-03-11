@@ -15,6 +15,7 @@ const CHANNEL_ID = process.env.CHANNEL_ID || 'UCqaSH5Js_s80nIY3P_wqCcg';
 const API_KEY = process.env.YOUTUBE_API_KEY;
 const SUB_LANG = process.env.SUBTITLE_LANG || 'ko';
 const DRY_RUN = process.argv.includes('--dry-run');
+const MIN_VIDEO_AGE_DAYS = Number.parseInt(process.env.MIN_VIDEO_AGE_DAYS || '7', 10);
 
 if (!API_KEY) {
   throw new Error('YOUTUBE_API_KEY 환경변수가 필요합니다.');
@@ -164,19 +165,25 @@ async function main() {
 
   const uploadsPlaylistId = await fetchUploadsPlaylistId(CHANNEL_ID);
   const allVideos = await fetchAllVideos(uploadsPlaylistId);
-  const newVideos = allVideos.filter((v) => !knownVideoIds.has(v.videoId));
 
-  if (newVideos.length === 0) {
-    console.log('신규 영상 없음.');
+  const cutoffDate = new Date(Date.now() - MIN_VIDEO_AGE_DAYS * 24 * 60 * 60 * 1000);
+  const eligibleNewVideos = allVideos.filter((v) => {
+    if (knownVideoIds.has(v.videoId)) return false;
+    if (!v.publishedAt) return false;
+    return new Date(v.publishedAt) <= cutoffDate;
+  });
+
+  if (eligibleNewVideos.length === 0) {
+    console.log(`처리 가능한 신규 영상 없음 (업로드 ${MIN_VIDEO_AGE_DAYS}일 경과 기준).`);
     return;
   }
 
-  console.log(`신규 영상 ${newVideos.length}개 발견.`);
+  console.log(`신규 영상 ${eligibleNewVideos.length}개 발견 (업로드 ${MIN_VIDEO_AGE_DAYS}일 경과).`);
 
   let nextNum = nextSubtitleNumber(mapping);
   const addedEntries = [];
 
-  for (const video of newVideos) {
+  for (const video of eligibleNewVideos) {
     const filename = `${String(nextNum).padStart(3, '0')}.srt`;
     const filePath = path.join(SUBTITLES_DIR, filename);
 

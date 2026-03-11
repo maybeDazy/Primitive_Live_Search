@@ -30,6 +30,7 @@ jobs:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           CHANNEL_ID: UCqaSH5Js_s80nIY3P_wqCcg
           SUBTITLE_LANG: ko
+          MIN_VIDEO_AGE_DAYS: '7'
         run: node scripts/auto_update_subtitles.mjs
 
       - name: Commit and push if changed

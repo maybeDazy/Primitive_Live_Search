@@ -10,7 +10,7 @@
 ### 동작 순서
 1. YouTube Data API로 채널 업로드 목록을 조회
 2. `subtitles/subtitle_mapping.json`에 없는 신규 영상 ID만 추림
-3. `yt-dlp`로 한국어 자동 자막(`ko`) 다운로드
+3. 업로드 후 최소 7일이 지난 신규 영상만 `yt-dlp`로 한국어 자동 자막(`ko`) 다운로드
 4. `subtitles/NNN.srt` 추가 및 매핑 JSON 갱신
 5. `index.html` 업데이트 로그에 당일 자동 업데이트 항목 추가
 6. `subtitles/subtitles.zip` 재생성
@@ -18,14 +18,15 @@
 ### GitHub 설정
 Repository Secret에 아래 값을 추가하세요.
 
-- `YOUTUBE_API_KEY`: YouTube Data API v3 키
+- `YOUTUBE_API_KEY`: YouTube Data API v3 키 (GitHub Secret로만 관리, 소스에 하드코딩 금지)
+- `MIN_VIDEO_AGE_DAYS`: 자막 다운로드 시도 최소 경과일 (기본값 7)
 
 ### 수동 실행
 ```bash
-YOUTUBE_API_KEY=YOUR_KEY node scripts/auto_update_subtitles.mjs
+YOUTUBE_API_KEY=YOUR_KEY MIN_VIDEO_AGE_DAYS=7 node scripts/auto_update_subtitles.mjs
 ```
 
 테스트 모드(파일 미반영):
 ```bash
-YOUTUBE_API_KEY=YOUR_KEY node scripts/auto_update_subtitles.mjs --dry-run
+YOUTUBE_API_KEY=YOUR_KEY MIN_VIDEO_AGE_DAYS=7 node scripts/auto_update_subtitles.mjs --dry-run
 ```
