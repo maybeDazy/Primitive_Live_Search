@@ -38,6 +38,7 @@ const API_KEY = process.env.YOUTUBE_API_KEY;
 const SUB_LANG = process.env.SUBTITLE_LANG || 'ko';
 const DRY_RUN = process.argv.includes('--dry-run');
 const MIN_VIDEO_AGE_DAYS = Number.parseInt(process.env.MIN_VIDEO_AGE_DAYS || '7', 10);
+const YT_DLP_PROXY = process.env.YT_DLP_PROXY || '';
 
 if (!API_KEY) {
   throw new Error('YOUTUBE_API_KEY 환경변수가 필요합니다.');
@@ -66,6 +67,18 @@ function runCommand(command, args, options = {}) {
       else reject(new Error(`${command} ${args.join(' ')} failed (${code})\n${stderr}`));
     });
   });
+}
+
+function isSkippableYtDlpError(error) {
+  const msg = String(error?.message || '').toLowerCase();
+  return (
+    msg.includes("sign in to confirm you're not a bot") ||
+    msg.includes('precondition check failed') ||
+    msg.includes('members-only') ||
+    msg.includes('confirm your age') ||
+    msg.includes('video unavailable') ||
+    msg.includes('private video')
+  );
 }
 
 async function fetchJson(url, params = {}) {
@@ -158,14 +171,21 @@ async function downloadSubtitle(videoId, number) {
   const outputTpl = path.join(SUBTITLES_DIR, basename);
   const command = ytDlpBinary();
 
-  await runCommand(command, [
+  const args = [
     '--skip-download',
     '--write-auto-sub',
     '--sub-lang', SUB_LANG,
     '--sub-format', 'vtt',
     '--output', outputTpl,
     `https://www.youtube.com/watch?v=${videoId}`
-  ]);
+  ];
+
+  if (YT_DLP_PROXY) {
+    args.unshift(YT_DLP_PROXY);
+    args.unshift('--proxy');
+  }
+
+  await runCommand(command, args);
 
   const candidate = path.join(SUBTITLES_DIR, `${basename}.${SUB_LANG}.vtt`);
   const target = path.join(SUBTITLES_DIR, `${basename}.srt`);
@@ -225,29 +245,44 @@ async function main() {
 
   let nextNum = nextSubtitleNumber(mapping);
   const addedEntries = [];
+  const skippedVideos = [];
 
   for (const video of eligibleNewVideos) {
     const filename = `${String(nextNum).padStart(3, '0')}.srt`;
     const filePath = path.join(SUBTITLES_DIR, filename);
 
-    if (!DRY_RUN) {
-      if (!fs.existsSync(filePath)) {
-        await downloadSubtitle(video.videoId, nextNum);
+    try {
+      if (!DRY_RUN) {
+        if (!fs.existsSync(filePath)) {
+          await downloadSubtitle(video.videoId, nextNum);
+        }
       }
+
+      addedEntries.push({
+        id: video.videoId,
+        title: video.title,
+        subtitles: [{
+          filename,
+          language: SUB_LANG,
+          language_name: SUB_LANG === 'ko' ? '한국어' : SUB_LANG,
+          filepath: `subtitles\\${filename}`
+        }]
+      });
+
+      nextNum += 1;
+    } catch (error) {
+      if (isSkippableYtDlpError(error)) {
+        console.warn(`건너뜀 [${video.videoId}] ${video.title}: ${String(error.message).split('\n')[0]}`);
+        skippedVideos.push(video.videoId);
+        continue;
+      }
+      throw error;
     }
+  }
 
-    addedEntries.push({
-      id: video.videoId,
-      title: video.title,
-      subtitles: [{
-        filename,
-        language: SUB_LANG,
-        language_name: SUB_LANG === 'ko' ? '한국어' : SUB_LANG,
-        filepath: `subtitles\\${filename}`
-      }]
-    });
-
-    nextNum += 1;
+  if (addedEntries.length === 0) {
+    console.log(`추가된 자막이 없습니다. 건너뜀: ${skippedVideos.length}개`);
+    return;
   }
 
   mapping.videos.push(...addedEntries);
@@ -267,7 +302,7 @@ async function main() {
     await rebuildZip();
   }
 
-  console.log(`완료: ${addedEntries.length}개 자막/매핑/업데이트 로그 갱신.`);
+  console.log(`완료: ${addedEntries.length}개 자막/매핑/업데이트 로그 갱신. 건너뜀 ${skippedVideos.length}개.`);
 }
 
 main().catch((err) => {
