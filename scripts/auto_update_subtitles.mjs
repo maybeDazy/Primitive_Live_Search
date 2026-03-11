@@ -96,15 +96,32 @@ async function fetchUploadsPlaylistId(channelId) {
 async function fetchAllVideos(uploadsPlaylistId) {
   const videos = [];
   let pageToken = undefined;
+  let recoveredInvalidToken = false;
 
-  do {
-    const json = await fetchJson('https://www.googleapis.com/youtube/v3/playlistItems', {
+  while (true) {
+    let json;
+    const params = {
       key: API_KEY,
       part: 'snippet',
       playlistId: uploadsPlaylistId,
-      maxResults: '50',
-      pageToken
-    });
+      maxResults: '50'
+    };
+    if (pageToken) {
+      params.pageToken = pageToken;
+    }
+
+    try {
+      json = await fetchJson('https://www.googleapis.com/youtube/v3/playlistItems', params);
+    } catch (error) {
+      const message = String(error?.message || '');
+      if (pageToken && !recoveredInvalidToken && message.includes('invalidPageToken')) {
+        console.warn('invalidPageToken 감지: pageToken 없이 1회 재시도합니다.');
+        pageToken = undefined;
+        recoveredInvalidToken = true;
+        continue;
+      }
+      throw error;
+    }
 
     for (const item of json.items || []) {
       const videoId = item.snippet?.resourceId?.videoId;
@@ -115,7 +132,8 @@ async function fetchAllVideos(uploadsPlaylistId) {
     }
 
     pageToken = json.nextPageToken;
-  } while (pageToken);
+    if (!pageToken) break;
+  }
 
   videos.sort((a, b) => new Date(a.publishedAt) - new Date(b.publishedAt));
   return videos;
