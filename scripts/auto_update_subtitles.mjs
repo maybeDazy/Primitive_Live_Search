@@ -69,7 +69,10 @@ function runCommand(command, args, options = {}) {
 }
 
 async function fetchJson(url, params = {}) {
-  const search = new URLSearchParams(params);
+  const cleanedParams = Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+  );
+  const search = new URLSearchParams(cleanedParams);
   const res = await fetch(`${url}?${search.toString()}`);
   if (!res.ok) {
     throw new Error(`API 실패: ${res.status} ${await res.text()}`);
@@ -235,7 +238,7 @@ async function main() {
   mapping.updatedAt = new Date().toISOString();
 
   const today = new Date().toISOString().slice(0, 10);
-https://github.com/maybeDazy/Primitive_Live_Search/blob/main/.github/workflows/daily-subtitle-update.yml
+
   if (!DRY_RUN) {
     writeJson(MAPPING_PATH, mapping);
 
