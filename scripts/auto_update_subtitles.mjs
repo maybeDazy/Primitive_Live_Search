@@ -235,7 +235,7 @@ async function main() {
   mapping.updatedAt = new Date().toISOString();
 
   const today = new Date().toISOString().slice(0, 10);
-
+https://github.com/maybeDazy/Primitive_Live_Search/blob/main/.github/workflows/daily-subtitle-update.yml
   if (!DRY_RUN) {
     writeJson(MAPPING_PATH, mapping);
 
