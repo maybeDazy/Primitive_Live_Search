@@ -1,0 +1,49 @@
+name: Daily Subtitle Update
+
+on:
+  schedule:
+    - cron: '0 18 * * *' # KST 03:00
+  workflow_dispatch:
+
+jobs:
+  update-subtitles:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install yt-dlp and zip
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y yt-dlp zip
+
+      - name: Run auto update
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          CHANNEL_ID: UCqaSH5Js_s80nIY3P_wqCcg
+          SUBTITLE_LANG: ko
+          MIN_VIDEO_AGE_DAYS: '7'
+          YT_DLP_PROXY: ${{ secrets.YT_DLP_PROXY }}
+          RETRY_WITHOUT_PROXY_ON_BLOCK: 'true'
+        run: node scripts/auto_update_subtitles.mjs
+
+      - name: Commit and push if changed
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add subtitles/subtitle_mapping.json subtitles/*.srt subtitles/subtitles.zip index.html
+          git commit -m "chore: auto-update subtitles and mapping"
+          git push
