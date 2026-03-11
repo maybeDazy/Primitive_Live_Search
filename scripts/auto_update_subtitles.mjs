@@ -11,6 +11,28 @@ const MAPPING_PATH = path.join(SUBTITLES_DIR, 'subtitle_mapping.json');
 const INDEX_HTML_PATH = path.join(ROOT_DIR, 'index.html');
 const ZIP_PATH = path.join(SUBTITLES_DIR, 'subtitles.zip');
 
+
+function loadEnvFileIfExists(filePath) {
+  if (!fs.existsSync(filePath)) return;
+
+  const lines = fs.readFileSync(filePath, 'utf-8').split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx < 1) continue;
+
+    const key = trimmed.slice(0, eqIdx).trim();
+    const value = trimmed.slice(eqIdx + 1).trim().replace(/^['"]|['"]$/g, '');
+    if (!(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadEnvFileIfExists(path.join(ROOT_DIR, '.env.local'));
+loadEnvFileIfExists(path.join(ROOT_DIR, '.env'));
+
 const CHANNEL_ID = process.env.CHANNEL_ID || 'UCqaSH5Js_s80nIY3P_wqCcg';
 const API_KEY = process.env.YOUTUBE_API_KEY;
 const SUB_LANG = process.env.SUBTITLE_LANG || 'ko';
@@ -213,7 +235,7 @@ async function main() {
   mapping.updatedAt = new Date().toISOString();
 
   const today = new Date().toISOString().slice(0, 10);
-
+https://github.com/maybeDazy/Primitive_Live_Search/blob/main/.github/workflows/daily-subtitle-update.yml
   if (!DRY_RUN) {
     writeJson(MAPPING_PATH, mapping);
 

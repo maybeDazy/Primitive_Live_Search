@@ -30,3 +30,21 @@ YOUTUBE_API_KEY=YOUR_KEY MIN_VIDEO_AGE_DAYS=7 node scripts/auto_update_subtitles
 ```bash
 YOUTUBE_API_KEY=YOUR_KEY MIN_VIDEO_AGE_DAYS=7 node scripts/auto_update_subtitles.mjs --dry-run
 ```
+
+
+### 로컬 env 파일 사용 (권장)
+커맨드 기록에 키가 남지 않도록 프로젝트 루트에 `.env.local` 파일을 만들고 사용하세요.
+
+```bash
+cat > .env.local <<'ENV'
+YOUTUBE_API_KEY=YOUR_KEY
+MIN_VIDEO_AGE_DAYS=7
+CHANNEL_ID=UCqaSH5Js_s80nIY3P_wqCcg
+SUBTITLE_LANG=ko
+ENV
+
+node scripts/auto_update_subtitles.mjs --dry-run
+```
+
+`.env`, `.env.local`은 `.gitignore`에 추가되어 커밋되지 않습니다.
+
