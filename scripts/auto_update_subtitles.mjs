@@ -11,7 +11,6 @@ const MAPPING_PATH = path.join(SUBTITLES_DIR, 'subtitle_mapping.json');
 const INDEX_HTML_PATH = path.join(ROOT_DIR, 'index.html');
 const ZIP_PATH = path.join(SUBTITLES_DIR, 'subtitles.zip');
 
-
 function loadEnvFileIfExists(filePath) {
   if (!fs.existsSync(filePath)) return;
 
@@ -38,7 +37,8 @@ const API_KEY = process.env.YOUTUBE_API_KEY;
 const SUB_LANG = process.env.SUBTITLE_LANG || 'ko';
 const DRY_RUN = process.argv.includes('--dry-run');
 const MIN_VIDEO_AGE_DAYS = Number.parseInt(process.env.MIN_VIDEO_AGE_DAYS || '7', 10);
-const YT_DLP_PROXY = process.env.YT_DLP_PROXY || '';
+const PYTHON_BIN = process.env.PYTHON_BIN || 'python3';
+const TRANSCRIPT_PROXY = process.env.YT_TRANSCRIPT_PROXY || process.env.YT_DLP_PROXY || '';
 const RETRY_WITHOUT_PROXY_ON_BLOCK = process.env.RETRY_WITHOUT_PROXY_ON_BLOCK !== 'false';
 
 if (!API_KEY) {
@@ -53,6 +53,41 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf-8');
 }
 
+function redactSensitiveText(input) {
+  return String(input || '').replace(/:\/\/([^:@\s]+):([^@\/\s]+)@/g, '://***:***@');
+}
+
+function formatErrorForLog(error) {
+  if (!error) return '알 수 없는 오류';
+
+  const lines = [];
+  lines.push(`message: ${String(error.message || error)}`);
+
+  if (error.command || error.args) {
+    const cmdLine = [error.command, ...(error.args || [])].filter(Boolean).join(' ');
+    if (cmdLine) lines.push(`command: ${cmdLine}`);
+  }
+
+  if (error.code !== undefined) {
+    lines.push(`exit_code: ${error.code}`);
+  }
+
+  const stderr = String(error.stderr || '').trim();
+  const stdout = String(error.stdout || '').trim();
+
+  if (stderr) {
+    lines.push('stderr:');
+    lines.push(stderr);
+  }
+
+  if (stdout) {
+    lines.push('stdout:');
+    lines.push(stdout);
+  }
+
+  return redactSensitiveText(lines.join('\n')).trim();
+}
+
 function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], ...options });
@@ -64,32 +99,49 @@ function runCommand(command, args, options = {}) {
 
     child.on('error', reject);
     child.on('close', (code) => {
-      if (code === 0) resolve({ stdout, stderr });
-      else reject(new Error(`${command} ${args.join(' ')} failed (${code})\n${stderr}`));
+      if (code === 0) {
+        resolve({ stdout, stderr });
+        return;
+      }
+
+      const error = new Error(`${command} ${args.join(' ')} failed (${code})`);
+      error.command = command;
+      error.args = args;
+      error.code = code;
+      error.stdout = stdout;
+      error.stderr = stderr;
+      reject(error);
     });
   });
 }
 
-function isSkippableYtDlpError(error) {
+function isSkippableTranscriptError(error) {
   const msg = String(error?.message || '').toLowerCase();
   return (
-    msg.includes("sign in to confirm you're not a bot") ||
-    msg.includes('precondition check failed') ||
-    msg.includes('members-only') ||
-    msg.includes('confirm your age') ||
-    msg.includes('video unavailable') ||
-    msg.includes('private video') ||
-    msg.includes('자막 파일 누락')
+    msg.includes('transcriptsdisabled') ||
+    msg.includes('notranscriptfound') ||
+    msg.includes('transcriptunavailable') ||
+    msg.includes('videounavailable') ||
+    msg.includes('requests blocked') ||
+    msg.includes('ip is blocked') ||
+    msg.includes('could not retrieve a transcript') ||
+    msg.includes('requestexception') ||
+    msg.includes('proxyerror') ||
+    msg.includes('tunnel connection failed') ||
+    msg.includes('403 forbidden')
   );
 }
 
-
-function isProxyRetryableYtDlpError(error) {
+function isProxyRetryableTranscriptError(error) {
   const msg = String(error?.message || '').toLowerCase();
   return (
-    msg.includes("sign in to confirm you're not a bot") ||
-    msg.includes('precondition check failed') ||
-    msg.includes('http error 400')
+    msg.includes('requests blocked') ||
+    msg.includes('ip is blocked') ||
+    msg.includes('could not retrieve a transcript') ||
+    msg.includes('requestexception') ||
+    msg.includes('proxyerror') ||
+    msg.includes('tunnel connection failed') ||
+    msg.includes('403 forbidden')
   );
 }
 
@@ -178,69 +230,36 @@ function nextSubtitleNumber(mappingData) {
   return maxNum + 1;
 }
 
-function ytDlpBinary() {
-  return process.env.YT_DLP_BIN || 'yt-dlp';
-}
-
-
-function findDownloadedSubtitleFile(outputStem) {
-  const files = fs.readdirSync(SUBTITLES_DIR);
-  const vttCandidates = files.filter((name) => name.startsWith(`${outputStem}.`) && name.endsWith('.vtt'));
-  if (vttCandidates.length === 0) return null;
-
-  const exactKo = vttCandidates.find((name) => name === `${outputStem}.${SUB_LANG}.vtt`);
-  if (exactKo) return path.join(SUBTITLES_DIR, exactKo);
-
-  const koFamily = vttCandidates.find((name) => name.startsWith(`${outputStem}.${SUB_LANG}-`));
-  if (koFamily) return path.join(SUBTITLES_DIR, koFamily);
-
-  return path.join(SUBTITLES_DIR, vttCandidates[0]);
-}
-
 async function downloadSubtitle(videoId, number) {
   const basename = String(number).padStart(3, '0');
-  const outputStem = `${basename}-${videoId}`;
-  const outputTpl = path.join(SUBTITLES_DIR, outputStem);
-  const command = ytDlpBinary();
+  const target = path.join(SUBTITLES_DIR, `${basename}.srt`);
 
   const buildArgs = (useProxy) => {
     const args = [
-      '--skip-download',
-      '--write-auto-sub',
-      '--sub-lang', SUB_LANG,
-      '--sub-format', 'vtt',
-      '--extractor-args', 'youtube:player_client=android,web',
-      '--output', outputTpl,
-      `https://www.youtube.com/watch?v=${videoId}`
+      path.join(ROOT_DIR, 'scripts', 'fetch_transcript.py'),
+      '--video-id', videoId,
+      '--output', target,
+      '--lang', SUB_LANG
     ];
 
-    if (useProxy && YT_DLP_PROXY) {
-      args.unshift(YT_DLP_PROXY);
-      args.unshift('--proxy');
+    if (useProxy && TRANSCRIPT_PROXY) {
+      args.push('--proxy', TRANSCRIPT_PROXY);
     }
 
     return args;
   };
 
   try {
-    await runCommand(command, buildArgs(true));
+    await runCommand(PYTHON_BIN, buildArgs(true));
   } catch (error) {
-    if (YT_DLP_PROXY && RETRY_WITHOUT_PROXY_ON_BLOCK && isProxyRetryableYtDlpError(error)) {
-      console.warn(`프록시 경로 실패, 무프록시 1회 재시도: ${videoId}`);
-      await runCommand(command, buildArgs(false));
+    if (TRANSCRIPT_PROXY && RETRY_WITHOUT_PROXY_ON_BLOCK && isProxyRetryableTranscriptError(error)) {
+      console.warn(`프록시 경로 실패, 무프록시 1회 재시도: ${videoId}\n${formatErrorForLog(error)}`);
+      await runCommand(PYTHON_BIN, buildArgs(false));
     } else {
       throw error;
     }
   }
 
-  const candidate = findDownloadedSubtitleFile(outputStem);
-  const target = path.join(SUBTITLES_DIR, `${basename}.srt`);
-
-  if (!candidate) {
-    throw new Error(`자막 파일 누락: ${outputStem}.*.vtt`);
-  }
-
-  fs.renameSync(candidate, target);
   return `${basename}.srt`;
 }
 
@@ -256,7 +275,6 @@ function updateIndexLog(indexHtml, count, dateText) {
 
 async function rebuildZip() {
   if (process.platform === 'win32') {
-    // GitHub Actions는 Linux이므로 윈도우에서는 스킵
     console.warn('Windows 환경에서는 subtitles.zip 자동 재생성을 건너뜁니다.');
     return;
   }
@@ -267,7 +285,6 @@ async function rebuildZip() {
     .map((f) => path.join(SUBTITLES_DIR, f))
   ]);
 }
-
 
 function extractVideoIdFromUrl(url) {
   if (!url) return '';
@@ -355,8 +372,9 @@ async function main() {
       });
 
     } catch (error) {
-      if (isSkippableYtDlpError(error)) {
-        console.warn(`건너뜀 [${video.videoId}] ${video.title}: ${String(error.message).split('\n')[0]}`);
+      if (isSkippableTranscriptError(error)) {
+        const detailed = formatErrorForLog(error);
+        console.warn(`건너뜀 [${video.videoId}] ${video.title}\n${detailed}`);
         skippedVideos.push(video.videoId);
         continue;
       }
