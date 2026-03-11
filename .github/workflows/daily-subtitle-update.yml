@@ -38,6 +38,8 @@ jobs:
           CHANNEL_ID: UCqaSH5Js_s80nIY3P_wqCcg
           SUBTITLE_LANG: ko
           MIN_VIDEO_AGE_DAYS: '7'
+          YT_TRANSCRIPT_PROXY: ${{ secrets.YT_DLP_PROXY }}
+          RETRY_WITHOUT_PROXY_ON_BLOCK: 'true'
         run: node scripts/auto_update_subtitles.mjs
 
       - name: Commit and push if changed

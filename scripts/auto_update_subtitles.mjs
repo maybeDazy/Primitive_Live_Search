@@ -38,6 +38,8 @@ const SUB_LANG = process.env.SUBTITLE_LANG || 'ko';
 const DRY_RUN = process.argv.includes('--dry-run');
 const MIN_VIDEO_AGE_DAYS = Number.parseInt(process.env.MIN_VIDEO_AGE_DAYS || '7', 10);
 const PYTHON_BIN = process.env.PYTHON_BIN || 'python3';
+const TRANSCRIPT_PROXY = process.env.YT_TRANSCRIPT_PROXY || process.env.YT_DLP_PROXY || '';
+const RETRY_WITHOUT_PROXY_ON_BLOCK = process.env.RETRY_WITHOUT_PROXY_ON_BLOCK !== 'false';
 
 if (!API_KEY) {
   throw new Error('YOUTUBE_API_KEY 환경변수가 필요합니다.');
@@ -73,10 +75,28 @@ function isSkippableTranscriptError(error) {
   return (
     msg.includes('transcriptsdisabled') ||
     msg.includes('notranscriptfound') ||
+    msg.includes('transcriptunavailable') ||
     msg.includes('videounavailable') ||
     msg.includes('requests blocked') ||
     msg.includes('ip is blocked') ||
-    msg.includes('could not retrieve a transcript')
+    msg.includes('could not retrieve a transcript') ||
+    msg.includes('requestexception') ||
+    msg.includes('proxyerror') ||
+    msg.includes('tunnel connection failed') ||
+    msg.includes('403 forbidden')
+  );
+}
+
+function isProxyRetryableTranscriptError(error) {
+  const msg = String(error?.message || '').toLowerCase();
+  return (
+    msg.includes('requests blocked') ||
+    msg.includes('ip is blocked') ||
+    msg.includes('could not retrieve a transcript') ||
+    msg.includes('requestexception') ||
+    msg.includes('proxyerror') ||
+    msg.includes('tunnel connection failed') ||
+    msg.includes('403 forbidden')
   );
 }
 
@@ -169,12 +189,31 @@ async function downloadSubtitle(videoId, number) {
   const basename = String(number).padStart(3, '0');
   const target = path.join(SUBTITLES_DIR, `${basename}.srt`);
 
-  await runCommand(PYTHON_BIN, [
-    path.join(ROOT_DIR, 'scripts', 'fetch_transcript.py'),
-    '--video-id', videoId,
-    '--output', target,
-    '--lang', SUB_LANG
-  ]);
+  const buildArgs = (useProxy) => {
+    const args = [
+      path.join(ROOT_DIR, 'scripts', 'fetch_transcript.py'),
+      '--video-id', videoId,
+      '--output', target,
+      '--lang', SUB_LANG
+    ];
+
+    if (useProxy && TRANSCRIPT_PROXY) {
+      args.push('--proxy', TRANSCRIPT_PROXY);
+    }
+
+    return args;
+  };
+
+  try {
+    await runCommand(PYTHON_BIN, buildArgs(true));
+  } catch (error) {
+    if (TRANSCRIPT_PROXY && RETRY_WITHOUT_PROXY_ON_BLOCK && isProxyRetryableTranscriptError(error)) {
+      console.warn(`프록시 경로 실패, 무프록시 1회 재시도: ${videoId}`);
+      await runCommand(PYTHON_BIN, buildArgs(false));
+    } else {
+      throw error;
+    }
+  }
 
   return `${basename}.srt`;
 }
