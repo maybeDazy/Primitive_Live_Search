@@ -53,6 +53,41 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf-8');
 }
 
+function redactSensitiveText(input) {
+  return String(input || '').replace(/:\/\/([^:@\s]+):([^@\/\s]+)@/g, '://***:***@');
+}
+
+function formatErrorForLog(error) {
+  if (!error) return '알 수 없는 오류';
+
+  const lines = [];
+  lines.push(`message: ${String(error.message || error)}`);
+
+  if (error.command || error.args) {
+    const cmdLine = [error.command, ...(error.args || [])].filter(Boolean).join(' ');
+    if (cmdLine) lines.push(`command: ${cmdLine}`);
+  }
+
+  if (error.code !== undefined) {
+    lines.push(`exit_code: ${error.code}`);
+  }
+
+  const stderr = String(error.stderr || '').trim();
+  const stdout = String(error.stdout || '').trim();
+
+  if (stderr) {
+    lines.push('stderr:');
+    lines.push(stderr);
+  }
+
+  if (stdout) {
+    lines.push('stdout:');
+    lines.push(stdout);
+  }
+
+  return redactSensitiveText(lines.join('\n')).trim();
+}
+
 function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], ...options });
@@ -64,8 +99,18 @@ function runCommand(command, args, options = {}) {
 
     child.on('error', reject);
     child.on('close', (code) => {
-      if (code === 0) resolve({ stdout, stderr });
-      else reject(new Error(`${command} ${args.join(' ')} failed (${code})\n${stderr}`));
+      if (code === 0) {
+        resolve({ stdout, stderr });
+        return;
+      }
+
+      const error = new Error(`${command} ${args.join(' ')} failed (${code})`);
+      error.command = command;
+      error.args = args;
+      error.code = code;
+      error.stdout = stdout;
+      error.stderr = stderr;
+      reject(error);
     });
   });
 }
@@ -208,7 +253,7 @@ async function downloadSubtitle(videoId, number) {
     await runCommand(PYTHON_BIN, buildArgs(true));
   } catch (error) {
     if (TRANSCRIPT_PROXY && RETRY_WITHOUT_PROXY_ON_BLOCK && isProxyRetryableTranscriptError(error)) {
-      console.warn(`프록시 경로 실패, 무프록시 1회 재시도: ${videoId}`);
+      console.warn(`프록시 경로 실패, 무프록시 1회 재시도: ${videoId}\n${formatErrorForLog(error)}`);
       await runCommand(PYTHON_BIN, buildArgs(false));
     } else {
       throw error;
@@ -328,7 +373,8 @@ async function main() {
 
     } catch (error) {
       if (isSkippableTranscriptError(error)) {
-        console.warn(`건너뜀 [${video.videoId}] ${video.title}: ${String(error.message).split('\n')[0]}`);
+        const detailed = formatErrorForLog(error);
+        console.warn(`건너뜀 [${video.videoId}] ${video.title}\n${detailed}`);
         skippedVideos.push(video.videoId);
         continue;
       }
