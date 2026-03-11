@@ -1407,15 +1407,15 @@
       
       summaryElement.innerHTML = `<i class="fas fa-check-circle"></i> ${results.length}개 비디오에서 ${totalMatches}개의 일치하는 자막을 찾았습니다.`;
       
-      // 첫 번째 배치 렌더링
-      renderNextBatch();
-      
       // 무한 스크롤 관찰자 설정
       resultsObserver = new IntersectionObserver((entries) => {
         if (entries[0].isIntersecting && (resultsPage * RESULTS_PER_PAGE) < currentResults.length) {
           renderNextBatch();
         }
       }, { rootMargin: '200px' });
+
+      // 첫 번째 배치 렌더링
+      renderNextBatch();
     }
 
     // 다음 결과 배치 렌더링 함수
@@ -1508,7 +1508,9 @@
         trigger.style.justifyContent = 'center';
         trigger.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 결과를 더 불러오는 중...';
         resultsElement.appendChild(trigger);
-        resultsObserver.observe(trigger);
+        if (resultsObserver) {
+          resultsObserver.observe(trigger);
+        }
       }
     }
     
