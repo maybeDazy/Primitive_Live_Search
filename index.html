@@ -525,6 +525,24 @@
         align-items: flex-start;
         gap: 8px;
       }
+
+      .inline-player-panel {
+        right: 12px;
+        bottom: 12px;
+        width: calc(100vw - 24px);
+      }
+
+      .inline-player-header {
+        flex-direction: column;
+      }
+
+      .inline-player-actions {
+        justify-content: space-between;
+      }
+
+      .inline-player-shell {
+        min-height: 210px;
+      }
     }
     
     /* Animation for loading */
@@ -630,6 +648,27 @@
       flex-wrap: wrap;
     }
 
+    .inline-play-btn {
+      background: linear-gradient(135deg, var(--accent-color), #2b8a46);
+      border: none;
+      color: white;
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s, filter 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .inline-play-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+      filter: brightness(1.02);
+    }
+
     .load-more-btn {
       background-color: transparent;
       border: 1px solid var(--secondary-color);
@@ -661,7 +700,45 @@
       font-size: 14px;
       color: var(--text-secondary);
       display: none;
-      animation: fadeIn 0.3s ease;
+      opacity: 0;
+      transform: translateY(-6px);
+      overflow: hidden;
+    }
+
+    .surrounding-subtitles.is-visible {
+      display: block;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .surrounding-subtitles.is-entering {
+      animation: surroundingExpand 0.24s ease;
+    }
+
+    .surrounding-subtitles.is-collapsing {
+      animation: surroundingCollapse 0.18s ease forwards;
+    }
+
+    @keyframes surroundingExpand {
+      from {
+        opacity: 0;
+        transform: translateY(-8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes surroundingCollapse {
+      from {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      to {
+        opacity: 0;
+        transform: translateY(-6px);
+      }
     }
 
     .surrounding-subtitle-item {
@@ -670,6 +747,18 @@
       padding: 8px 10px;
       border-radius: var(--radius-sm);
       cursor: pointer;
+      animation: surroundingItemIn 0.22s ease both;
+    }
+
+    @keyframes surroundingItemIn {
+      from {
+        opacity: 0;
+        transform: translateX(-8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
     }
 
     .surrounding-subtitle-item.current {
@@ -693,6 +782,107 @@
       margin-right: 10px;
       font-family: monospace;
       color: var(--accent-color);
+    }
+
+    .inline-player-panel {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      width: min(420px, calc(100vw - 24px));
+      background-color: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      z-index: 1100;
+      overflow: hidden;
+      opacity: 0;
+      transform: translateY(20px);
+      pointer-events: none;
+      transition: opacity 0.22s ease, transform 0.22s ease;
+    }
+
+    .inline-player-panel[hidden] {
+      display: none;
+    }
+
+    .inline-player-panel.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .inline-player-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .inline-player-meta {
+      min-width: 0;
+    }
+
+    .inline-player-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent-color);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .inline-player-title {
+      margin-top: 2px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-color);
+      word-break: keep-all;
+    }
+
+    .inline-player-status {
+      padding: 0 16px 10px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .inline-player-actions {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .inline-player-link,
+    .inline-player-close {
+      border: 1px solid var(--border-color);
+      background-color: transparent;
+      color: var(--text-color);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .inline-player-link:hover,
+    .inline-player-close:hover {
+      border-color: var(--secondary-color);
+      color: var(--secondary-color);
+    }
+
+    .inline-player-shell {
+      aspect-ratio: 16 / 9;
+      background: #000;
+      min-height: 236px;
+    }
+
+    .inline-player-frame,
+    .inline-player-frame iframe {
+      width: 100%;
+      height: 100%;
     }
 
     /* 업데이트 로그 스타일 */
@@ -845,6 +1035,29 @@
       <div id="summary" class="summary"></div>
       <div id="partner-links" class="partner-links"></div>
       <div id="results"></div>
+    </div>
+  </div>
+
+  <div id="inline-player-panel" class="inline-player-panel" hidden>
+    <div class="inline-player-header">
+      <div class="inline-player-meta">
+        <div class="inline-player-label">Mini Player</div>
+        <div id="inline-player-title" class="inline-player-title">재생할 자막 구간을 선택하세요</div>
+      </div>
+      <div class="inline-player-actions">
+        <a id="inline-player-link" class="inline-player-link" href="https://youtube.com" target="_blank" rel="noopener noreferrer">
+          <i class="fab fa-youtube"></i>
+          유튜브 열기
+        </a>
+        <button id="inline-player-close" class="inline-player-close" type="button">
+          <i class="fas fa-times"></i>
+          닫기
+        </button>
+      </div>
+    </div>
+    <div id="inline-player-status" class="inline-player-status">이 페이지에서 영상 구간을 바로 재생할 수 있습니다.</div>
+    <div class="inline-player-shell">
+      <div id="inline-player-frame" class="inline-player-frame"></div>
     </div>
   </div>
 
@@ -1020,6 +1233,14 @@
     const RESULTS_PER_PAGE = 30; // 한 번에 표시할 비디오(그룹) 수
     let resultsObserver = null;
     let partnerKeywordEntriesCache = null;
+    let youtubeInlinePlayer = null;
+    let youtubeIframeApiRequested = false;
+    let youtubeIframeApiReady = false;
+    let pendingInlinePlayback = null;
+    let resolveYouTubeIframeApiReady;
+    const youtubeIframeApiReadyPromise = new Promise((resolve) => {
+      resolveYouTubeIframeApiReady = resolve;
+    });
     
     // 페이지 로드 완료 시 매핑 데이터 로드 및 초기화
     document.addEventListener('DOMContentLoaded', () => {
@@ -1098,8 +1319,23 @@
         }
       });
 
+      document.getElementById('inline-player-close').addEventListener('click', () => {
+        closeInlinePlayer();
+      });
+
       // 결과 영역 클릭 이벤트 리스너 (이벤트 위임)
       document.getElementById('results').addEventListener('click', (event) => {
+        const inlinePlayButton = event.target.closest('.inline-play-btn');
+        if (inlinePlayButton) {
+            const videoId = inlinePlayButton.dataset.videoId;
+            const startSeconds = Number.parseInt(inlinePlayButton.dataset.startSeconds || '0', 10);
+            const videoTitle = inlinePlayButton.dataset.videoTitle || '';
+            if (videoId) {
+                playInlineVideo(videoId, startSeconds, videoTitle);
+            }
+            return;
+        }
+
         const button = event.target.closest('.load-more-btn');
         if (button) {
             const filepath = button.dataset.filepath;
@@ -1389,14 +1625,265 @@
       return { startTime, endTime };
     }
 
+    window.onYouTubeIframeAPIReady = function onYouTubeIframeAPIReady() {
+      youtubeIframeApiReady = true;
+      if (typeof resolveYouTubeIframeApiReady === 'function') {
+        resolveYouTubeIframeApiReady(window.YT);
+        resolveYouTubeIframeApiReady = null;
+      }
+    };
+
+    function buildYouTubeWatchUrl(videoId, startSeconds = 0) {
+      const safeSeconds = Math.max(0, Number.parseInt(startSeconds || '0', 10) || 0);
+      return `https://youtube.com/watch?v=${videoId}&t=${safeSeconds}`;
+    }
+
+    function formatPlaybackSeconds(seconds) {
+      const totalSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const secs = totalSeconds % 60;
+
+      if (hours > 0) {
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      }
+
+      return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    function setInlinePlayerStatus(message) {
+      const statusElement = document.getElementById('inline-player-status');
+      if (statusElement) {
+        statusElement.textContent = message;
+      }
+    }
+
+    function setInlinePlayerMeta(videoId, startSeconds, videoTitle) {
+      const titleElement = document.getElementById('inline-player-title');
+      const linkElement = document.getElementById('inline-player-link');
+      const timeLabel = formatPlaybackSeconds(startSeconds);
+
+      if (titleElement) {
+        titleElement.textContent = videoTitle
+          ? `${videoTitle} · ${timeLabel}부터 재생`
+          : `${timeLabel}부터 재생`;
+      }
+
+      if (linkElement) {
+        linkElement.href = buildYouTubeWatchUrl(videoId, startSeconds);
+      }
+    }
+
+    function showInlinePlayerPanel() {
+      const panel = document.getElementById('inline-player-panel');
+      if (!panel) return;
+
+      panel.hidden = false;
+      const scheduleFrame = window.requestAnimationFrame || ((callback) => setTimeout(callback, 0));
+      scheduleFrame(() => {
+        panel.classList.add('is-visible');
+      });
+    }
+
+    function closeInlinePlayer() {
+      const panel = document.getElementById('inline-player-panel');
+      if (!panel) return;
+
+      panel.classList.remove('is-visible');
+      setTimeout(() => {
+        panel.hidden = true;
+      }, 220);
+
+      if (youtubeInlinePlayer && typeof youtubeInlinePlayer.pauseVideo === 'function') {
+        youtubeInlinePlayer.pauseVideo();
+      }
+    }
+
+    function loadYouTubeIframeApi() {
+      if (youtubeIframeApiReady || (window.YT && window.YT.Player)) {
+        youtubeIframeApiReady = true;
+        if (typeof resolveYouTubeIframeApiReady === 'function') {
+          resolveYouTubeIframeApiReady(window.YT);
+          resolveYouTubeIframeApiReady = null;
+        }
+        return;
+      }
+
+      if (youtubeIframeApiRequested) return;
+      youtubeIframeApiRequested = true;
+
+      const script = document.createElement('script');
+      script.src = 'https://www.youtube.com/iframe_api';
+      script.async = true;
+      script.dataset.youtubeIframeApi = 'true';
+      const target = document.head || document.body || document.documentElement;
+      if (target) {
+        target.appendChild(script);
+      }
+    }
+
+    function waitForYouTubeIframeApi(timeoutMs = 5000) {
+      loadYouTubeIframeApi();
+
+      if (youtubeIframeApiReady || (window.YT && window.YT.Player)) {
+        youtubeIframeApiReady = true;
+        return Promise.resolve(window.YT);
+      }
+
+      return Promise.race([
+        youtubeIframeApiReadyPromise,
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('YouTube IFrame API 로드 타임아웃')), timeoutMs);
+        })
+      ]);
+    }
+
+    function handleInlinePlayerReady(event) {
+      if (!pendingInlinePlayback) return;
+
+      const { videoId, startSeconds } = pendingInlinePlayback;
+      event.target.loadVideoById({
+        videoId,
+        startSeconds
+      });
+      setInlinePlayerStatus(`페이지에서 ${formatPlaybackSeconds(startSeconds)}부터 재생 중...`);
+    }
+
+    function handleInlinePlayerStateChange(event) {
+      const playerState = window.YT?.PlayerState;
+      const startSeconds = pendingInlinePlayback?.startSeconds || 0;
+
+      if (!playerState) return;
+
+      if (event.data === playerState.PLAYING) {
+        setInlinePlayerStatus(`페이지에서 ${formatPlaybackSeconds(startSeconds)}부터 재생 중...`);
+      } else if (event.data === playerState.BUFFERING) {
+        setInlinePlayerStatus('영상 구간을 불러오는 중...');
+      } else if (event.data === playerState.PAUSED) {
+        setInlinePlayerStatus('재생이 일시정지되었습니다.');
+      } else if (event.data === playerState.ENDED) {
+        setInlinePlayerStatus('재생이 끝났습니다.');
+      }
+    }
+
+    function handleInlinePlayerError() {
+      const videoId = pendingInlinePlayback?.videoId;
+      const startSeconds = pendingInlinePlayback?.startSeconds || 0;
+      setInlinePlayerStatus('플레이어 오류로 새 탭에서 유튜브를 엽니다.');
+
+      if (videoId) {
+        window.open(buildYouTubeWatchUrl(videoId, startSeconds), '_blank', 'noopener,noreferrer');
+      }
+    }
+
+    async function playInlineVideo(videoId, startSeconds = 0, videoTitle = '') {
+      if (!videoId) return;
+
+      const safeSeconds = Math.max(0, Number.parseInt(startSeconds || '0', 10) || 0);
+      pendingInlinePlayback = {
+        videoId,
+        startSeconds: safeSeconds,
+        videoTitle
+      };
+
+      showInlinePlayerPanel();
+      setInlinePlayerMeta(videoId, safeSeconds, videoTitle);
+      setInlinePlayerStatus('플레이어를 준비하는 중...');
+
+      try {
+        const YTApi = await waitForYouTubeIframeApi();
+
+        if (!youtubeInlinePlayer) {
+          youtubeInlinePlayer = new YTApi.Player('inline-player-frame', {
+            videoId,
+            playerVars: {
+              autoplay: 1,
+              playsinline: 1,
+              rel: 0,
+              start: safeSeconds
+            },
+            events: {
+              onReady: handleInlinePlayerReady,
+              onStateChange: handleInlinePlayerStateChange,
+              onError: handleInlinePlayerError
+            }
+          });
+          return;
+        }
+
+        youtubeInlinePlayer.loadVideoById({
+          videoId,
+          startSeconds: safeSeconds
+        });
+        setInlinePlayerStatus(`페이지에서 ${formatPlaybackSeconds(safeSeconds)}부터 재생 중...`);
+      } catch (error) {
+        console.error('YouTube IFrame API 로드 실패:', error);
+        setInlinePlayerStatus('플레이어 로드에 실패해 새 탭에서 엽니다.');
+        window.open(buildYouTubeWatchUrl(videoId, safeSeconds), '_blank', 'noopener,noreferrer');
+      }
+    }
+
+    function setSurroundingButtonState(matchElement, state) {
+      const loadMoreButton = matchElement?.querySelector('.load-more-btn');
+      if (!loadMoreButton) return;
+
+      if (state === 'loading') {
+        loadMoreButton.disabled = true;
+        loadMoreButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 로딩 중...';
+        return;
+      }
+
+      if (state === 'expanded') {
+        loadMoreButton.disabled = false;
+        loadMoreButton.innerHTML = '<i class="fas fa-chevron-up"></i> 자막 접기';
+        return;
+      }
+
+      if (state === 'error') {
+        loadMoreButton.disabled = false;
+        loadMoreButton.innerHTML = '<i class="fas fa-exclamation-circle"></i> 로드 실패';
+        return;
+      }
+
+      loadMoreButton.disabled = false;
+      loadMoreButton.innerHTML = '<i class="fas fa-ellipsis-h"></i> 자막 더 보기';
+    }
+
+    function animateSurroundingContainer(surroundingDiv) {
+      if (!surroundingDiv) return;
+
+      surroundingDiv.classList.remove('is-collapsing', 'is-entering');
+      void surroundingDiv.offsetWidth;
+      surroundingDiv.classList.add('is-visible', 'is-entering');
+    }
+
+    function collapseSurroundingSubtitles(matchElement) {
+      const surroundingDiv = matchElement?.querySelector('.surrounding-subtitles');
+      if (!surroundingDiv || surroundingDiv.dataset.expanded !== 'true') {
+        return;
+      }
+
+      setSurroundingButtonState(matchElement, 'loading');
+      surroundingDiv.dataset.expanded = 'false';
+      surroundingDiv.classList.remove('is-entering');
+      surroundingDiv.classList.add('is-collapsing');
+
+      setTimeout(() => {
+        surroundingDiv.classList.remove('is-collapsing', 'is-visible');
+        surroundingDiv.innerHTML = '';
+        surroundingDiv.style.display = 'none';
+        setSurroundingButtonState(matchElement, 'collapsed');
+      }, 180);
+    }
+
     function updateSubtitleMatchFocus(matchElement, subtitle, filepath, centerIndex) {
       if (!matchElement || !subtitle) return;
 
       const matchContext = matchElement.querySelector('.match-context');
       const matchTimeLink = matchElement.querySelector('.match-time');
-      const loadMoreButton = matchElement.querySelector('.load-more-btn');
       const videoId = matchElement.dataset.videoId;
       const { startTime } = getTimeRangeParts(subtitle.time);
+      const startSeconds = Math.floor(convertTimeToSeconds(startTime));
 
       matchElement.dataset.currentIndex = String(centerIndex);
 
@@ -1405,15 +1892,21 @@
       }
 
       if (matchTimeLink) {
-        matchTimeLink.href = `https://youtube.com/watch?v=${videoId}&t=${Math.floor(convertTimeToSeconds(startTime))}`;
+        matchTimeLink.href = buildYouTubeWatchUrl(videoId, startSeconds);
         matchTimeLink.innerHTML = `<i class="fas fa-play"></i> ${startTime}`;
       }
 
+      const inlinePlayButton = matchElement.querySelector('.inline-play-btn');
+      if (inlinePlayButton) {
+        inlinePlayButton.dataset.videoId = videoId;
+        inlinePlayButton.dataset.startSeconds = String(startSeconds);
+        inlinePlayButton.dataset.videoTitle = matchElement.dataset.videoTitle || '';
+      }
+
+      const loadMoreButton = matchElement.querySelector('.load-more-btn');
       if (loadMoreButton) {
         loadMoreButton.dataset.filepath = filepath;
         loadMoreButton.dataset.matchIndex = String(centerIndex);
-        loadMoreButton.disabled = false;
-        loadMoreButton.innerHTML = '<i class="fas fa-ellipsis-h"></i> 자막 더 보기';
       }
     }
 
@@ -1437,6 +1930,7 @@
             data-filepath="${filepath}"
             data-center-index="${i}"
             title="이 자막을 기준으로 다시 보기"
+            style="animation-delay: ${(i - startIndex) * 0.03}s"
           >
             <span>${startTime}</span> ${formattedText}
           </div>
@@ -1447,6 +1941,9 @@
       surroundingDiv.style.display = 'block';
       surroundingDiv.dataset.filepath = filepath;
       surroundingDiv.dataset.centerIndex = String(centerIndex);
+      surroundingDiv.dataset.expanded = 'true';
+      animateSurroundingContainer(surroundingDiv);
+      setSurroundingButtonState(matchElement, 'expanded');
     }
 
     function renderPartnerLinks(keyword) {
@@ -2237,12 +2734,22 @@
             <li
               class="subtitle-match"
               data-video-id="${result.videoId}"
+              data-video-title="${escapeHtml(result.videoTitle)}"
               data-filepath="${displayFilepath}"
               data-current-index="${match.arrayIndex}"
               style="animation-delay: ${(batchVideoIndex % RESULTS_PER_PAGE) * 0.1 + matchIndex * 0.05}s"
             >
               <div class="match-context">${formattedText}</div>
               <div class="match-controls">
+                <button
+                  class="inline-play-btn"
+                  data-video-id="${result.videoId}"
+                  data-start-seconds="${Math.floor(seconds)}"
+                  data-video-title="${escapeHtml(result.videoTitle)}"
+                >
+                  <i class="fas fa-play-circle"></i>
+                  이 페이지 재생
+                </button>
                 <a href="https://youtube.com/watch?v=${result.videoId}&t=${Math.floor(seconds)}" target="_blank" class="match-time">
                   <i class="fas fa-play"></i>
                   ${timeStart}
@@ -2320,8 +2827,12 @@
 
         if (!matchElement || !surroundingDiv) return;
 
-        buttonElement.disabled = true;
-        buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 로딩 중...';
+        if (surroundingDiv.dataset.expanded === 'true') {
+            collapseSurroundingSubtitles(matchElement);
+            return;
+        }
+
+        setSurroundingButtonState(matchElement, 'loading');
         surroundingDiv.innerHTML = '';
         surroundingDiv.style.display = 'block';
 
@@ -2329,7 +2840,7 @@
 
         if (!subtitles || Number.isNaN(matchArrayIndex) || !subtitles[matchArrayIndex]) {
             surroundingDiv.innerHTML = '<p style="color: var(--primary-dark);">주변 자막을 불러오는 데 실패했습니다.</p>';
-            buttonElement.innerHTML = '<i class="fas fa-exclamation-circle"></i> 로드 실패';
+            setSurroundingButtonState(matchElement, 'error');
             return;
         }
 
