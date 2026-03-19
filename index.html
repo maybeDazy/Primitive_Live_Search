@@ -425,7 +425,41 @@
       transform: translateY(-3px);
       box-shadow: var(--shadow-sm);
     }
-    
+
+    .subtitle-match.is-sliding-prev .match-context,
+    .subtitle-match.is-sliding-prev .match-controls,
+    .subtitle-match.is-sliding-prev .surrounding-subtitles {
+      animation: subtitleFocusPrev 0.26s ease;
+    }
+
+    .subtitle-match.is-sliding-next .match-context,
+    .subtitle-match.is-sliding-next .match-controls,
+    .subtitle-match.is-sliding-next .surrounding-subtitles {
+      animation: subtitleFocusNext 0.26s ease;
+    }
+
+    @keyframes subtitleFocusPrev {
+      from {
+        opacity: 0;
+        transform: translateY(-14px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes subtitleFocusNext {
+      from {
+        opacity: 0;
+        transform: translateY(14px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
     .match-context {
       font-size: 15px;
       line-height: 1.6;
@@ -1855,6 +1889,19 @@
       });
     }
 
+    function animateMatchFocusChange(matchElement, direction) {
+      if (!matchElement || (direction !== 'prev' && direction !== 'next')) return;
+
+      const animationClass = direction === 'prev' ? 'is-sliding-prev' : 'is-sliding-next';
+      matchElement.classList.remove('is-sliding-prev', 'is-sliding-next');
+      void matchElement.offsetWidth;
+      matchElement.classList.add(animationClass);
+
+      setTimeout(() => {
+        matchElement.classList.remove(animationClass);
+      }, 280);
+    }
+
     function collapseSurroundingSubtitles(matchElement) {
       const surroundingDiv = matchElement?.querySelector('.surrounding-subtitles');
       if (!surroundingDiv || surroundingDiv.dataset.expanded !== 'true') {
@@ -2851,8 +2898,16 @@
         const subtitles = await getParsedSubtitles(filepath);
         if (!subtitles || !subtitles[centerIndex]) return;
 
+        const currentIndex = parseInt(matchElement.dataset.currentIndex || '', 10);
+        let direction = null;
+
+        if (!Number.isNaN(currentIndex) && currentIndex !== centerIndex) {
+            direction = centerIndex < currentIndex ? 'prev' : 'next';
+        }
+
         updateSubtitleMatchFocus(matchElement, subtitles[centerIndex], filepath, centerIndex);
         renderSurroundingSubtitles(matchElement, subtitles, filepath, centerIndex);
+        animateMatchFocusChange(matchElement, direction);
         scrollMatchIntoView(matchElement);
     }
 
