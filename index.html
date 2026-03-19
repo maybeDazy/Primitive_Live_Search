@@ -426,20 +426,18 @@
       box-shadow: var(--shadow-sm);
     }
 
-    .subtitle-match.is-sliding-prev .match-context,
-    .subtitle-match.is-sliding-prev .match-controls {
-      animation: subtitleFocusPrev 0.26s ease;
+    .surrounding-subtitles.is-shifting-prev {
+      animation: surroundingShiftPrev 0.26s ease;
     }
 
-    .subtitle-match.is-sliding-next .match-context,
-    .subtitle-match.is-sliding-next .match-controls {
-      animation: subtitleFocusNext 0.26s ease;
+    .surrounding-subtitles.is-shifting-next {
+      animation: surroundingShiftNext 0.26s ease;
     }
 
-    @keyframes subtitleFocusPrev {
+    @keyframes surroundingShiftPrev {
       from {
-        opacity: 0;
-        transform: translateY(-14px);
+        opacity: 0.72;
+        transform: translateY(-12px);
       }
       to {
         opacity: 1;
@@ -447,10 +445,10 @@
       }
     }
 
-    @keyframes subtitleFocusNext {
+    @keyframes surroundingShiftNext {
       from {
-        opacity: 0;
-        transform: translateY(14px);
+        opacity: 0.72;
+        transform: translateY(12px);
       }
       to {
         opacity: 1;
@@ -1903,16 +1901,17 @@
       surroundingDiv.scrollTop = targetTop;
     }
 
-    function animateMatchFocusChange(matchElement, direction) {
-      if (!matchElement || (direction !== 'prev' && direction !== 'next')) return;
+    function animateSurroundingFocusChange(matchElement, direction) {
+      const surroundingDiv = matchElement?.querySelector('.surrounding-subtitles');
+      if (!surroundingDiv || (direction !== 'prev' && direction !== 'next')) return;
 
-      const animationClass = direction === 'prev' ? 'is-sliding-prev' : 'is-sliding-next';
-      matchElement.classList.remove('is-sliding-prev', 'is-sliding-next');
-      void matchElement.offsetWidth;
-      matchElement.classList.add(animationClass);
+      const animationClass = direction === 'prev' ? 'is-shifting-prev' : 'is-shifting-next';
+      surroundingDiv.classList.remove('is-shifting-prev', 'is-shifting-next');
+      void surroundingDiv.offsetWidth;
+      surroundingDiv.classList.add(animationClass);
 
       setTimeout(() => {
-        matchElement.classList.remove(animationClass);
+        surroundingDiv.classList.remove(animationClass);
       }, 280);
     }
 
@@ -2924,7 +2923,7 @@
 
         updateSubtitleMatchFocus(matchElement, subtitles[centerIndex], filepath, centerIndex);
         renderSurroundingSubtitles(matchElement, subtitles, filepath, centerIndex);
-        animateMatchFocusChange(matchElement, direction);
+        animateSurroundingFocusChange(matchElement, direction);
         requestAnimationFrame(() => {
             scrollCurrentSurroundingSubtitleIntoView(matchElement, 'smooth');
         });
