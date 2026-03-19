@@ -783,7 +783,7 @@
     <div class="update-log-content">
       <div class="update-item">
         <span class="update-date">2026-03-11</span>
-        자동 업데이트: 새 영상 17개 자막을 추가했습니다
+        프리미티브님 유튜브 영상 자막 17개를 추가하였습니다
       </div>
       <div class="update-item">
         <span class="update-date">2026-02-08</span>
@@ -816,7 +816,7 @@
     const SUBTITLE_DB_VERSION = 1;
     const SUBTITLE_STORE_NAME = 'parsedSubtitles';
     const SUBTITLE_META_STORE_NAME = 'cacheMeta';
-    const SUBTITLE_CACHE_VERSION = 'v1';
+    const SUBTITLE_CACHE_VERSION = 'v2';
     
     // 무한 스크롤(지연 로딩) 관련 변수
     let currentResults = [];
@@ -902,8 +902,8 @@
 
       // 결과 영역 클릭 이벤트 리스너 (이벤트 위임)
       document.getElementById('results').addEventListener('click', (event) => {
-        if (event.target && event.target.classList.contains('load-more-btn')) {
-            const button = event.target;
+        const button = event.target.closest('.load-more-btn');
+        if (button) {
             const filepath = button.dataset.filepath;
             const matchIndex = button.dataset.matchIndex;
             if (filepath && matchIndex !== undefined) {
@@ -913,9 +913,92 @@
       });
     });
 
+    function normalizeSubtitlePath(filepath) {
+      if (!filepath) return '';
+
+      let normalizedPath = String(filepath).replace(/\\/g, '/').trim();
+      normalizedPath = normalizedPath.replace(/^\.\/+/, '').replace(/^\/+/, '');
+
+      if (!normalizedPath.startsWith('subtitles/')) {
+        normalizedPath = `subtitles/${normalizedPath.replace(/^subtitles\//, '')}`;
+      }
+
+      return `./${normalizedPath}`;
+    }
+
+    function getSubtitleDataVersion() {
+      return mappingData?.updatedAt || `${mappingData?.totalVideos || 0}-${mappingData?.totalSubtitles || 0}`;
+    }
+
+    function buildVersionedSubtitleUrl(filepath) {
+      const normalizedPath = normalizeSubtitlePath(filepath);
+      const version = getSubtitleDataVersion();
+
+      if (!version) return normalizedPath;
+
+      return `${normalizedPath}?v=${encodeURIComponent(version)}`;
+    }
+
+    function compactTextForComparison(text) {
+      return String(text || '')
+        .toLowerCase()
+        .replace(/<[^>]+>/g, '')
+        .replace(/[^0-9a-zA-Z가-힣]+/g, '');
+    }
+
+    function getComparableTokens(text) {
+      return String(text || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .split(' ')
+        .map((raw) => ({
+          raw,
+          normalized: raw.toLowerCase().replace(/[^0-9a-zA-Z가-힣]+/g, '')
+        }))
+        .filter((token) => token.normalized);
+    }
+
+    function mergeSubtitleTexts(baseText, nextText) {
+      const compactBase = compactTextForComparison(baseText);
+      const compactNext = compactTextForComparison(nextText);
+
+      if (!compactBase) return String(nextText || '').trim();
+      if (!compactNext) return String(baseText || '').trim();
+
+      if (compactBase === compactNext) {
+        return baseText.length >= nextText.length ? baseText : nextText;
+      }
+
+      if (compactBase.includes(compactNext)) {
+        return baseText;
+      }
+
+      if (compactNext.includes(compactBase)) {
+        return nextText;
+      }
+
+      const baseTokens = getComparableTokens(baseText);
+      const nextTokens = getComparableTokens(nextText);
+      const maxOverlap = Math.min(baseTokens.length, nextTokens.length);
+
+      for (let size = maxOverlap; size >= 2; size--) {
+        const baseSuffix = baseTokens.slice(-size).map((token) => token.normalized).join(' ');
+        const nextPrefix = nextTokens.slice(0, size).map((token) => token.normalized).join(' ');
+
+        if (baseSuffix === nextPrefix) {
+          const remainder = nextTokens.slice(size).map((token) => token.raw).join(' ');
+          return remainder ? `${baseText} ${remainder}`.replace(/\s+/g, ' ').trim() : baseText;
+        }
+      }
+
+      return null;
+    }
+
     function getSubtitleCacheSignature() {
+      const version = getSubtitleDataVersion();
       const totalVideos = mappingData?.totalVideos || mappingData?.videos?.length || 0;
-      return `${SUBTITLE_CACHE_VERSION}-${totalVideos}`;
+      const totalSubtitles = mappingData?.totalSubtitles || 0;
+      return `${SUBTITLE_CACHE_VERSION}-${version}-${totalVideos}-${totalSubtitles}`;
     }
 
     async function openSubtitleCacheDB() {
@@ -941,7 +1024,7 @@
 
     async function loadPersistentSubtitleCache(signature) {
       const db = await openSubtitleCacheDB();
-      if (!db) return null;
+      if (!db) return { cache: null, isStale: false };
 
       return new Promise((resolve) => {
         const tx = db.transaction([SUBTITLE_STORE_NAME, SUBTITLE_META_STORE_NAME], 'readonly');
@@ -951,8 +1034,13 @@
         const metaRequest = metaStore.get('meta');
         metaRequest.onsuccess = () => {
           const meta = metaRequest.result;
-          if (!meta || meta.signature !== signature) {
-            resolve(null);
+          if (!meta) {
+            resolve({ cache: null, isStale: false });
+            return;
+          }
+
+          if (meta.signature !== signature) {
+            resolve({ cache: null, isStale: true });
             return;
           }
 
@@ -961,16 +1049,33 @@
             const records = allRequest.result || [];
             const cache = {};
             records.forEach((record) => {
-              cache[record.filepath] = record.subtitles;
+              cache[normalizeSubtitlePath(record.filepath)] = record.subtitles;
             });
-            resolve(cache);
+            resolve({ cache, isStale: false });
           };
-          allRequest.onerror = () => resolve(null);
+          allRequest.onerror = () => resolve({ cache: null, isStale: false });
         };
 
-        metaRequest.onerror = () => resolve(null);
+        metaRequest.onerror = () => resolve({ cache: null, isStale: false });
         tx.oncomplete = () => db.close();
-        tx.onerror = () => resolve(null);
+        tx.onerror = () => resolve({ cache: null, isStale: false });
+      });
+    }
+
+    async function clearPersistentSubtitleCache() {
+      const db = await openSubtitleCacheDB();
+      if (!db) return;
+
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction([SUBTITLE_STORE_NAME, SUBTITLE_META_STORE_NAME], 'readwrite');
+        tx.objectStore(SUBTITLE_STORE_NAME).clear();
+        tx.objectStore(SUBTITLE_META_STORE_NAME).clear();
+
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
       });
     }
 
@@ -986,7 +1091,7 @@
         subtitleStore.clear();
 
         Object.entries(subtitlesByPath).forEach(([filepath, subtitles]) => {
-          subtitleStore.put({ filepath, subtitles });
+          subtitleStore.put({ filepath: normalizeSubtitlePath(filepath), subtitles });
         });
 
         metaStore.put({
@@ -1013,7 +1118,7 @@
       try {
         // 병렬로 데이터 로드
         const [mappingRes, aiRes] = await Promise.all([
-          fetch('./subtitles/subtitle_mapping.json'),
+          fetch(`./subtitles/subtitle_mapping.json?t=${Date.now()}`, { cache: 'no-store' }),
           fetch('./refined_dataset.json')
         ]);
 
@@ -1062,16 +1167,43 @@
       progressBar.style.display = 'block';
       progress.style.width = '0%';
 
+      const mappedSubtitlePathSet = new Set();
+      mappingData.videos.forEach((video) => {
+        video.subtitles.forEach((subtitle) => {
+          mappedSubtitlePathSet.add(normalizeSubtitlePath(subtitle.filepath));
+        });
+      });
+
       const cacheSignature = getSubtitleCacheSignature();
       try {
-        const persistedCache = await loadPersistentSubtitleCache(cacheSignature);
-        if (persistedCache && Object.keys(persistedCache).length > 0) {
-          subtitleCache = persistedCache;
+        const { cache: persistedCache, isStale } = await loadPersistentSubtitleCache(cacheSignature);
+        const filteredPersistedCache = persistedCache
+          ? Object.fromEntries(
+              Object.entries(persistedCache).filter(([filepath]) => mappedSubtitlePathSet.has(filepath))
+            )
+          : null;
+
+        if (filteredPersistedCache && Object.keys(filteredPersistedCache).length === mappedSubtitlePathSet.size) {
+          subtitleCache = filteredPersistedCache;
           progress.style.width = '100%';
           progressBar.style.display = 'none';
-          statusElement.innerHTML = `<i class="fas fa-bolt"></i> 캐시에서 자막 ${Object.keys(persistedCache).length}개를 즉시 로드했습니다.`;
-          console.log(`IndexedDB cache hit: ${Object.keys(persistedCache).length} files loaded.`);
+          statusElement.innerHTML = `<i class="fas fa-bolt"></i> 캐시에서 자막 ${Object.keys(filteredPersistedCache).length}개를 즉시 로드했습니다.`;
+          console.log(`IndexedDB cache hit: ${Object.keys(filteredPersistedCache).length} files loaded.`);
+
+          if (persistedCache && Object.keys(filteredPersistedCache).length !== Object.keys(persistedCache).length) {
+            try {
+              await savePersistentSubtitleCache(cacheSignature, filteredPersistedCache);
+            } catch (persistError) {
+              console.warn('정리된 캐시 재저장 실패:', persistError);
+            }
+          }
+
           return;
+        }
+
+        if (isStale || persistedCache) {
+          await clearPersistentSubtitleCache();
+          subtitleCache = {};
         }
       } catch (cacheError) {
         console.warn('영구 캐시 확인 실패, 네트워크 로딩으로 진행합니다:', cacheError);
@@ -1081,22 +1213,26 @@
       progress.style.width = '0%';
 
       try {
-        const response = await fetch('./subtitles/subtitles.zip');
+        const response = await fetch(buildVersionedSubtitleUrl('subtitles.zip'), { cache: 'no-store' });
         if (response.ok) {
           const zipBlob = await response.blob();
           const zip = await JSZip.loadAsync(zipBlob);
           
           let loadedCount = 0;
-          const files = Object.keys(zip.files).filter(name => name.endsWith('.srt') || name.endsWith('.vtt'));
+          const files = Object.keys(zip.files).filter((name) => {
+            if (!name.endsWith('.srt') && !name.endsWith('.vtt')) {
+              return false;
+            }
+
+            return mappedSubtitlePathSet.has(normalizeSubtitlePath(name));
+          });
           
           for (const filename of files) {
             const content = await zip.files[filename].async('string');
             const subtitles = parseSRT(content);
             // 매핑 데이터의 filepath와 동일한 키 형식으로 저장 (예: "./subtitles/001.srt")
             // ZIP 안에 파일명만 있는 경우를 대비해 처리
-            const cacheKey = filename.startsWith('./') ? filename : 
-                             filename.startsWith('subtitles/') ? `./${filename}` : 
-                             `./subtitles/${filename}`;
+            const cacheKey = normalizeSubtitlePath(filename);
                              
             subtitleCache[cacheKey] = subtitles;
             
@@ -1121,14 +1257,7 @@
       }
 
       // 2. ZIP 실패 시 기존 개별 파일 로딩 방식 (Fallback)
-      const allSubtitlePaths = [];
-      mappingData.videos.forEach(video => {
-        video.subtitles.forEach(subtitle => {
-          if (!allSubtitlePaths.includes(subtitle.filepath)) {
-            allSubtitlePaths.push(subtitle.filepath);
-          }
-        });
-      });
+      const allSubtitlePaths = Array.from(mappedSubtitlePathSet);
       
       if (allSubtitlePaths.length === 0) return;
       
@@ -1415,18 +1544,12 @@
     // SRT 파일 로드 및 검색 함수
     async function searchInSubtitle(file, keyword) {
       const filePath = file.subtitle.filepath;
-      
-      // 경로 정규화 (역슬래시를 슬래시로 변환, ./ 추가 등)
-      let normalizedPath = filePath.replace(/\\/g, '/');
-      if (!normalizedPath.startsWith('./')) {
-        normalizedPath = `./${normalizedPath}`;
-      }
-      
+      const normalizedPath = normalizeSubtitlePath(filePath);
       const subtitles = subtitleCache[normalizedPath];
 
       if (!subtitles) {
         console.warn(`캐시 미스 [${normalizedPath}]: 서버에서 직접 불러옵니다.`);
-        const loadedSubtitles = await getParsedSubtitles(filePath);
+        const loadedSubtitles = await getParsedSubtitles(normalizedPath);
         if (!loadedSubtitles) return [];
         return performSearchInArray(loadedSubtitles, keyword);
       }
@@ -1453,49 +1576,57 @@
       return matches;
     }
     
-    // SRT/VTT 파일 파싱 함수 (중복 제거 로직 추가)
+    // SRT/VTT 파일 파싱 함수 (중복/누적 자막 정리 포함)
     function parseSRT(content) {
-      let isVTT = content.trim().startsWith('WEBVTT');
+      const isVTT = content.trim().startsWith('WEBVTT');
       const lines = content.split(/\r?\n/);
       const subtitles = [];
       
       let index = '';
       let time = '';
       let text = [];
-      let lastText = ''; // 마지막 추가된 텍스트 저장용
+
+      const commitSubtitle = () => {
+        if (!time || text.length === 0) return;
+
+        const cleanedText = text.join(' ')
+          .replace(/<[^>]+>/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (!cleanedText) return;
+
+        const timeParts = time.split(' ');
+        const startTime = timeParts[0];
+        const endTime = timeParts[2] || timeParts[0];
+        const nextSubtitle = {
+          index: index || (subtitles.length + 1).toString(),
+          time: `${startTime} --> ${endTime}`,
+          text: cleanedText
+        };
+
+        const lastSubtitle = subtitles[subtitles.length - 1];
+        if (lastSubtitle) {
+          const mergedText = mergeSubtitleTexts(lastSubtitle.text, nextSubtitle.text);
+          if (mergedText) {
+            lastSubtitle.text = mergedText;
+            lastSubtitle.time = `${lastSubtitle.time.split(' --> ')[0]} --> ${endTime}`;
+            return;
+          }
+        }
+
+        subtitles.push(nextSubtitle);
+      };
       
       for (let i = 0; i < lines.length; i++) {
-        let line = lines[i].trim();
+        const line = lines[i].trim();
         
         if (isVTT && (line.startsWith('WEBVTT') || line.startsWith('Kind:') || line.startsWith('Language:'))) {
           continue;
         }
 
         if (line === '') {
-          if (time && text.length > 0) {
-            const cleanedText = text.join(' ')
-              .replace(/<[^>]+>/g, '') 
-              .replace(/\s+/g, ' ')
-              .trim();
-            
-            // 중복 제거: 이전 문장과 내용이 같거나, 이전 문장이 현재 문장에 포함되는 경우 스킵 또는 업데이트
-            if (cleanedText && cleanedText !== lastText) {
-              // 유튜브 자동자막의 '누적형' 텍스트 처리: 이전 문장이 현재 문장의 시작부분과 같다면 이전 것을 지우고 현재 것으로 대체 가능하나, 
-              // 여기서는 단순 중복이나 포함 관계만 체크하여 리스트를 간결하게 만듭니다.
-              if (!lastText || !cleanedText.startsWith(lastText)) {
-                subtitles.push({
-                  index: index || (subtitles.length + 1).toString(),
-                  time: time.split(' ')[0] + ' --> ' + (time.split(' ')[2] || time.split(' ')[0]),
-                  text: cleanedText
-                });
-                lastText = cleanedText;
-              } else if (subtitles.length > 0 && cleanedText.startsWith(lastText)) {
-                // 이전 문장이 현재 문장의 시작일 경우, 시간만 업데이트하거나 교체
-                subtitles[subtitles.length - 1].text = cleanedText;
-                lastText = cleanedText;
-              }
-            }
-          }
+          commitSubtitle();
           index = '';
           time = '';
           text = [];
@@ -1507,6 +1638,8 @@
           text.push(line);
         }
       }
+
+      commitSubtitle();
       return subtitles;
     }
     
@@ -1561,7 +1694,7 @@
       
       batch.forEach((result, batchVideoIndex) => {
         const videoIndex = startIndex + batchVideoIndex;
-        const displayFilepath = result.subtitle.filepath;
+        const displayFilepath = normalizeSubtitlePath(result.subtitle.filepath);
         
         batchHTML += `
           <div class="result-group" style="animation-delay: ${(batchVideoIndex % RESULTS_PER_PAGE) * 0.1}s">
@@ -1706,16 +1839,18 @@
 
     // 자막 데이터 가져오기 및 캐싱 함수 (메모리 캐시 사용)
     async function getParsedSubtitles(filepath) {
+        const normalizedPath = normalizeSubtitlePath(filepath);
+
         // 1. 메모리 캐시 확인
-        if (subtitleCache[filepath]) {
+        if (subtitleCache[normalizedPath]) {
             // console.log(`Memory cache hit for: ${filepath}`);
-            return subtitleCache[filepath];
+            return subtitleCache[normalizedPath];
         }
 
         // 2. 캐시 없으면 파일 로드 및 파싱
         try {
             // console.log(`Memory cache miss for: ${filepath}. Fetching...`);
-            const response = await fetch(filepath);
+            const response = await fetch(buildVersionedSubtitleUrl(normalizedPath), { cache: 'no-store' });
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -1723,11 +1858,11 @@
             const subtitles = parseSRT(content);
 
             // 3. 메모리 캐시에 저장
-            subtitleCache[filepath] = subtitles;
+            subtitleCache[normalizedPath] = subtitles;
 
             return subtitles;
         } catch (error) {
-            console.error(`파일 로드 또는 파싱 실패: ${filepath}`, error);
+            console.error(`파일 로드 또는 파싱 실패: ${normalizedPath}`, error);
             return null; // 실패 시 null 반환
         }
     }

@@ -273,7 +273,7 @@ function updateIndexLog(indexHtml, count, dateText) {
   if (pos < 0) return indexHtml;
 
   const insertPos = pos + marker.length;
-  const message = `\n      <div class="update-item">\n        <span class="update-date">${dateText}</span>\n        자동 업데이트: 새 영상 ${count}개 자막을 추가했습니다\n      </div>`;
+  const message = `\n      <div class="update-item">\n        <span class="update-date">${dateText}</span>\n        프리미티브님 유튜브 영상 자막 ${count}개를 추가하였습니다\n      </div>`;
   return `${indexHtml.slice(0, insertPos)}${message}${indexHtml.slice(insertPos)}`;
 }
 
@@ -373,7 +373,7 @@ async function main() {
           filename,
           language: SUB_LANG,
           language_name: SUB_LANG === 'ko' ? '한국어' : SUB_LANG,
-          filepath: `subtitles\\${filename}`
+          filepath: `./subtitles/${filename}`
         }]
       });
 
@@ -395,7 +395,7 @@ async function main() {
 
   mapping.videos.push(...addedEntries);
   mapping.totalVideos = mapping.videos.length;
-  mapping.totalSubtitles = mapping.videos.length;
+  mapping.totalSubtitles = mapping.videos.reduce((sum, video) => sum + (video.subtitles?.length || 0), 0);
   mapping.updatedAt = new Date().toISOString();
 
   const today = new Date().toISOString().slice(0, 10);
