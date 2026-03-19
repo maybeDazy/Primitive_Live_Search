@@ -882,12 +882,12 @@
     const SUBTITLE_STORE_NAME = 'parsedSubtitles';
     const SUBTITLE_META_STORE_NAME = 'cacheMeta';
     const SUBTITLE_CACHE_VERSION = 'v2';
-    // partnersUrl에 실제 쿠팡 파트너스 URL을 넣으면 기본 검색 URL 대신 해당 링크로 이동합니다.
-    const COUPANG_PARTNERS_LINKS = [
+    // partnersUrl에 실제 제휴/외부 링크를 넣으면 기본 검색 URL 대신 해당 링크로 이동합니다.
+    const PARTNER_LINK_ITEMS = [
       {
         label: '버터',
         query: '버터',
-        aliases: ['버터', '무염버터', '기버터'],
+        aliases: ['버터', '무염버터'],
         partnersUrl: 'https://link.coupang.com/a/d7cWh1'
       },
       {
@@ -913,6 +913,90 @@
         query: 'DK',
         aliases: ['dk', '비타민dk', '비타민 dk', 'd3k2', '비타민dk2', '비타민 dk2'],
         partnersUrl: 'https://link.coupang.com/a/d7c7f5'
+      },
+      {
+        label: '미네랄',
+        query: '미네랄',
+        aliases: ['미네랄', '마그네슘', '트레이스 미네랄', 'trace mega mag'],
+        partnersUrl: 'https://kr.iherb.com/pr/trace-mega-mag-400-mg-4-fl-oz-118-ml/23262?rcode=RIT9934'
+      },
+      {
+        label: '다이제스트 골드',
+        query: '다이제스트 골드',
+        aliases: ['다이제스트 골드', '다이제스트골드', 'digest gold'],
+        partnersUrl: 'https://link.coupang.com/a/d7ewCF'
+      },
+      {
+        label: 'HCL',
+        query: 'HCL',
+        aliases: ['hcl'],
+        partnersUrl: 'https://link.coupang.com/a/d7fU6z'
+      },
+      {
+        label: '베타인 HCL',
+        query: '베타인 HCL',
+        aliases: ['베타인 hcl', 'betaine hcl', 'betaine hcl pepsin', 'hcl 펩신'],
+        partnersUrl: 'https://kr.iherb.com/pr/nutricost-betaine-hcl-pepsin-240-capsules/143243?rcode=RIT9934'
+      },
+      {
+        label: '코코넛 아미노스',
+        query: '코코넛 아미노스',
+        aliases: ['코코넛 아미노스', '코코넛아미노스', 'coconut aminos'],
+        partnersUrl: 'https://kr.iherb.com/pr/coconut-secret-coconut-aminos-original-8-fl-oz-237-ml/24098?rcode=RIT9934'
+      },
+      {
+        label: '리포 골드',
+        query: '리포 골드',
+        aliases: ['리포 골드', '리포골드', 'lipo gold'],
+        partnersUrl: 'https://link.coupang.com/a/d7fYHT'
+      },
+      {
+        label: '강황',
+        query: '강황',
+        aliases: ['강황', 'turmeric'],
+        partnersUrl: 'https://kr.iherb.com/pr/swanson-full-spectrum-turmeric-720-mg-100-vegan-capsules/118375?rcode=RIT9934'
+      },
+      {
+        label: '계란',
+        query: '계란',
+        aliases: ['계란', '달걀', '유정란'],
+        partnersUrl: 'https://link.coupang.com/a/d7fLdh'
+      },
+      {
+        label: '기버터',
+        query: '기버터',
+        aliases: ['기버터', '기 버터', 'ghee'],
+        partnersUrl: 'https://link.coupang.com/a/d7fMfK'
+      },
+      {
+        label: '치즈',
+        query: '치즈',
+        aliases: ['치즈'],
+        partnersUrl: 'https://link.coupang.com/a/d7fPZq'
+      },
+      {
+        label: '어간장',
+        query: '어간장',
+        aliases: ['어간장'],
+        partnersUrl: 'https://link.coupang.com/a/d7fRjm'
+      },
+      {
+        label: '미트박스',
+        query: '미트박스',
+        aliases: ['미트박스'],
+        partnersUrl: 'https://www.meatbox.co.kr'
+      },
+      {
+        label: '미트매니저',
+        query: '미트매니저',
+        aliases: ['미트매니저', '목초육'],
+        partnersUrl: 'https://linktr.ee/meatsmanager'
+      },
+      {
+        label: '미트프렌즈',
+        query: '미트프렌즈',
+        aliases: ['미트프렌즈'],
+        partnersUrl: 'https://www.meatfriends.co.kr'
       }
     ];
     
@@ -922,6 +1006,7 @@
     let resultsPage = 0;
     const RESULTS_PER_PAGE = 30; // 한 번에 표시할 비디오(그룹) 수
     let resultsObserver = null;
+    let partnerKeywordEntriesCache = null;
     
     // 페이지 로드 완료 시 매핑 데이터 로드 및 초기화
     document.addEventListener('DOMContentLoaded', () => {
@@ -1123,13 +1208,19 @@
     }
 
     function getPartnerKeywordEntries() {
-      return COUPANG_PARTNERS_LINKS
+      if (partnerKeywordEntriesCache) {
+        return partnerKeywordEntriesCache;
+      }
+
+      partnerKeywordEntriesCache = PARTNER_LINK_ITEMS
         .flatMap(item => {
           const url = item.partnersUrl || buildCoupangSearchUrl(item.query);
           const keywords = Array.from(new Set([item.label, item.query, ...(item.aliases || [])].filter(Boolean)));
           return keywords.map(keyword => ({ keyword, url }));
         })
         .sort((a, b) => b.keyword.length - a.keyword.length);
+
+      return partnerKeywordEntriesCache;
     }
 
     function hasAsciiWordBoundaries(text, startIndex, endIndex) {
@@ -1238,7 +1329,7 @@
         return;
       }
 
-      const linkItems = COUPANG_PARTNERS_LINKS.map(item => ({
+      const linkItems = PARTNER_LINK_ITEMS.map(item => ({
         ...item,
         isActive: isPartnerKeywordActive(item, keyword),
         url: item.partnersUrl || buildCoupangSearchUrl(item.query)
@@ -1256,9 +1347,9 @@
       `).join('');
 
       partnerLinksElement.innerHTML = `
-        <span class="partner-links-label">관련 쿠팡 링크</span>
+        <span class="partner-links-label">관련 파트너 링크</span>
         <div class="partner-links-list">${linksHTML}</div>
-        <div class="partner-links-note">이 페이지는 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받을 수 있습니다. 링크는 새 탭에서 열립니다.</div>
+        <div class="partner-links-note">이 페이지에는 쿠팡 파트너스, iHerb 추천 코드 및 기타 외부 링크가 포함될 수 있으며, 이에 따른 수수료를 제공받을 수 있습니다. 링크는 새 탭에서 열립니다.</div>
       `;
     }
 
