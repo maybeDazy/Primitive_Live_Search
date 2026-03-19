@@ -667,11 +667,24 @@
     .surrounding-subtitle-item {
       margin-bottom: 8px;
       line-height: 1.5;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
     }
 
     .surrounding-subtitle-item.current {
       font-weight: 500;
       color: var(--text-color);
+      background-color: rgba(66, 133, 244, 0.08);
+    }
+
+    .surrounding-subtitle-item:hover {
+      background-color: rgba(66, 133, 244, 0.08);
+    }
+
+    [data-theme="dark"] .surrounding-subtitle-item.current,
+    [data-theme="dark"] .surrounding-subtitle-item:hover {
+      background-color: rgba(66, 133, 244, 0.16);
     }
 
     .surrounding-subtitle-item span {
@@ -881,7 +894,7 @@
     const SUBTITLE_DB_VERSION = 1;
     const SUBTITLE_STORE_NAME = 'parsedSubtitles';
     const SUBTITLE_META_STORE_NAME = 'cacheMeta';
-    const SUBTITLE_CACHE_VERSION = 'v2';
+    const SUBTITLE_CACHE_VERSION = 'v3';
     // partnersUrl에 실제 제휴/외부 링크를 넣으면 기본 검색 URL 대신 해당 링크로 이동합니다.
     const PARTNER_LINK_ITEMS = [
       {
@@ -1094,6 +1107,20 @@
             if (filepath && matchIndex !== undefined) {
                 loadSurroundingSubtitles(button, filepath, matchIndex);
             }
+            return;
+        }
+
+        if (event.target.closest('.surrounding-subtitle-item a')) {
+            return;
+        }
+
+        const surroundingItem = event.target.closest('.surrounding-subtitle-item');
+        if (surroundingItem) {
+            const filepath = surroundingItem.dataset.filepath;
+            const centerIndex = surroundingItem.dataset.centerIndex;
+            if (filepath && centerIndex !== undefined) {
+                focusSurroundingSubtitle(surroundingItem, filepath, centerIndex);
+            }
         }
       });
     });
@@ -1177,6 +1204,41 @@
       }
 
       return null;
+    }
+
+    function isEquivalentSubtitleText(baseText, nextText) {
+      const compactBase = compactTextForComparison(baseText);
+      const compactNext = compactTextForComparison(nextText);
+      return compactBase && compactBase === compactNext;
+    }
+
+    function dedupeOverlappingMatches(matches) {
+      const dedupedMatches = [];
+
+      matches.forEach((match) => {
+        const lastMatch = dedupedMatches[dedupedMatches.length - 1];
+        if (!lastMatch) {
+          dedupedMatches.push(match);
+          return;
+        }
+
+        const isAdjacent = match.arrayIndex - lastMatch.arrayIndex <= 1;
+        const isDuplicate = isEquivalentSubtitleText(lastMatch.text, match.text);
+        const isOverlapping = Boolean(mergeSubtitleTexts(lastMatch.text, match.text));
+
+        if (!isAdjacent || (!isDuplicate && !isOverlapping)) {
+          dedupedMatches.push(match);
+          return;
+        }
+
+        const lastLength = compactTextForComparison(lastMatch.text).length;
+        const currentLength = compactTextForComparison(match.text).length;
+        if (currentLength >= lastLength) {
+          dedupedMatches[dedupedMatches.length - 1] = match;
+        }
+      });
+
+      return dedupedMatches;
     }
 
     function normalizeKeywordText(text) {
@@ -1318,6 +1380,73 @@
 
       html += highlightSearchKeyword(sourceText.slice(lastIndex), keyword);
       return html;
+    }
+
+    function getTimeRangeParts(timeRange) {
+      const parts = String(timeRange || '').split(' --> ');
+      const startTime = parts[0] || '';
+      const endTime = parts[1] || startTime;
+      return { startTime, endTime };
+    }
+
+    function updateSubtitleMatchFocus(matchElement, subtitle, filepath, centerIndex) {
+      if (!matchElement || !subtitle) return;
+
+      const matchContext = matchElement.querySelector('.match-context');
+      const matchTimeLink = matchElement.querySelector('.match-time');
+      const loadMoreButton = matchElement.querySelector('.load-more-btn');
+      const videoId = matchElement.dataset.videoId;
+      const { startTime } = getTimeRangeParts(subtitle.time);
+
+      matchElement.dataset.currentIndex = String(centerIndex);
+
+      if (matchContext) {
+        matchContext.innerHTML = formatSubtitleText(subtitle.text, currentKeyword);
+      }
+
+      if (matchTimeLink) {
+        matchTimeLink.href = `https://youtube.com/watch?v=${videoId}&t=${Math.floor(convertTimeToSeconds(startTime))}`;
+        matchTimeLink.innerHTML = `<i class="fas fa-play"></i> ${startTime}`;
+      }
+
+      if (loadMoreButton) {
+        loadMoreButton.dataset.filepath = filepath;
+        loadMoreButton.dataset.matchIndex = String(centerIndex);
+        loadMoreButton.disabled = false;
+        loadMoreButton.innerHTML = '<i class="fas fa-ellipsis-h"></i> 자막 더 보기';
+      }
+    }
+
+    function renderSurroundingSubtitles(matchElement, subtitles, filepath, centerIndex) {
+      const surroundingDiv = matchElement.querySelector('.surrounding-subtitles');
+      if (!surroundingDiv) return;
+
+      const startIndex = Math.max(0, centerIndex - 5);
+      const endIndex = Math.min(subtitles.length - 1, centerIndex + 5);
+      let surroundingHTML = '';
+
+      for (let i = startIndex; i <= endIndex; i++) {
+        const subtitle = subtitles[i];
+        const { startTime } = getTimeRangeParts(subtitle.time);
+        const isCurrent = i === centerIndex;
+        const formattedText = formatSubtitleText(subtitle.text, currentKeyword);
+
+        surroundingHTML += `
+          <div
+            class="surrounding-subtitle-item ${isCurrent ? 'current' : ''}"
+            data-filepath="${filepath}"
+            data-center-index="${i}"
+            title="이 자막을 기준으로 다시 보기"
+          >
+            <span>${startTime}</span> ${formattedText}
+          </div>
+        `;
+      }
+
+      surroundingDiv.innerHTML = surroundingHTML;
+      surroundingDiv.style.display = 'block';
+      surroundingDiv.dataset.filepath = filepath;
+      surroundingDiv.dataset.centerIndex = String(centerIndex);
     }
 
     function renderPartnerLinks(keyword) {
@@ -1934,7 +2063,7 @@
           });
         }
       });
-      return matches;
+      return dedupeOverlappingMatches(matches);
     }
     
     // SRT/VTT 파일 파싱 함수 (중복/누적 자막 정리 포함)
@@ -1950,8 +2079,11 @@
       const commitSubtitle = () => {
         if (!time || text.length === 0) return;
 
-        const cleanedText = text.join(' ')
-          .replace(/<[^>]+>/g, '')
+        const cleanedLines = text
+          .map((line) => line.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim())
+          .filter(Boolean);
+
+        const cleanedText = cleanedLines.join(' ')
           .replace(/\s+/g, ' ')
           .trim();
 
@@ -1960,6 +2092,7 @@
         const timeParts = time.split(' ');
         const startTime = timeParts[0];
         const endTime = timeParts[2] || timeParts[0];
+        const cueDurationMs = Math.round((convertTimeToSeconds(endTime) - convertTimeToSeconds(startTime)) * 1000);
         const nextSubtitle = {
           index: index || (subtitles.length + 1).toString(),
           time: `${startTime} --> ${endTime}`,
@@ -1967,6 +2100,19 @@
         };
 
         const lastSubtitle = subtitles[subtitles.length - 1];
+        if (isVTT) {
+          if (cueDurationMs <= 50) {
+            return;
+          }
+
+          if (lastSubtitle && isEquivalentSubtitleText(lastSubtitle.text, nextSubtitle.text)) {
+            return;
+          }
+
+          subtitles.push(nextSubtitle);
+          return;
+        }
+
         if (lastSubtitle) {
           const mergedText = mergeSubtitleTexts(lastSubtitle.text, nextSubtitle.text);
           if (mergedText) {
@@ -2088,7 +2234,13 @@
           const seconds = convertTimeToSeconds(timeStart);
 
           batchHTML += `
-            <li class="subtitle-match" style="animation-delay: ${(batchVideoIndex % RESULTS_PER_PAGE) * 0.1 + matchIndex * 0.05}s">
+            <li
+              class="subtitle-match"
+              data-video-id="${result.videoId}"
+              data-filepath="${displayFilepath}"
+              data-current-index="${match.arrayIndex}"
+              style="animation-delay: ${(batchVideoIndex % RESULTS_PER_PAGE) * 0.1 + matchIndex * 0.05}s"
+            >
               <div class="match-context">${formattedText}</div>
               <div class="match-controls">
                 <a href="https://youtube.com/watch?v=${result.videoId}&t=${Math.floor(seconds)}" target="_blank" class="match-time">
@@ -2163,9 +2315,10 @@
     // 주변 자막 로드 함수
     async function loadSurroundingSubtitles(buttonElement, filepath, matchArrayIndexStr) {
         const matchArrayIndex = parseInt(matchArrayIndexStr, 10);
-        const surroundingDiv = buttonElement.closest('.subtitle-match').querySelector('.surrounding-subtitles');
+        const matchElement = buttonElement.closest('.subtitle-match');
+        const surroundingDiv = matchElement?.querySelector('.surrounding-subtitles');
 
-        if (!surroundingDiv) return;
+        if (!matchElement || !surroundingDiv) return;
 
         buttonElement.disabled = true;
         buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 로딩 중...';
@@ -2174,30 +2327,26 @@
 
         const subtitles = await getParsedSubtitles(filepath);
 
-        if (!subtitles) {
+        if (!subtitles || Number.isNaN(matchArrayIndex) || !subtitles[matchArrayIndex]) {
             surroundingDiv.innerHTML = '<p style="color: var(--primary-dark);">주변 자막을 불러오는 데 실패했습니다.</p>';
             buttonElement.innerHTML = '<i class="fas fa-exclamation-circle"></i> 로드 실패';
             return;
         }
 
-        let surroundingHTML = '';
-        const startIndex = Math.max(0, matchArrayIndex - 5);
-        const endIndex = Math.min(subtitles.length - 1, matchArrayIndex + 5);
+        updateSubtitleMatchFocus(matchElement, subtitles[matchArrayIndex], filepath, matchArrayIndex);
+        renderSurroundingSubtitles(matchElement, subtitles, filepath, matchArrayIndex);
+    }
 
-        for (let i = startIndex; i <= endIndex; i++) {
-            const sub = subtitles[i];
-            const timeStart = sub.time.split(' --> ')[0];
-            const isCurrent = i === matchArrayIndex;
-            const formattedText = formatSubtitleText(sub.text, currentKeyword);
-            surroundingHTML += `
-                <div class="surrounding-subtitle-item ${isCurrent ? 'current' : ''}">
-                    <span>${timeStart}</span> ${formattedText}
-                </div>
-            `;
-        }
+    async function focusSurroundingSubtitle(itemElement, filepath, centerIndexStr) {
+        const centerIndex = parseInt(centerIndexStr, 10);
+        const matchElement = itemElement.closest('.subtitle-match');
+        if (!matchElement || Number.isNaN(centerIndex)) return;
 
-        surroundingDiv.innerHTML = surroundingHTML;
-        buttonElement.innerHTML = '<i class="fas fa-check-circle"></i> 로드 완료';
+        const subtitles = await getParsedSubtitles(filepath);
+        if (!subtitles || !subtitles[centerIndex]) return;
+
+        updateSubtitleMatchFocus(matchElement, subtitles[centerIndex], filepath, centerIndex);
+        renderSurroundingSubtitles(matchElement, subtitles, filepath, centerIndex);
     }
 
     // 자막 데이터 가져오기 및 캐싱 함수 (메모리 캐시 사용)
