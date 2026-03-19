@@ -427,6 +427,19 @@
       border-radius: 3px;
       font-weight: 500;
     }
+
+    .partner-inline-link {
+      color: inherit;
+      font-weight: 600;
+      text-decoration: underline;
+      text-decoration-color: var(--secondary-color);
+      text-decoration-thickness: 1.5px;
+      text-underline-offset: 3px;
+    }
+
+    .partner-inline-link:hover {
+      color: var(--secondary-color);
+    }
     
     .match-time {
       display: inline-flex;
@@ -1085,6 +1098,19 @@
       return (text || '').toLowerCase().replace(/\s+/g, '');
     }
 
+    function escapeHtml(text) {
+      return String(text || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function escapeRegExp(text) {
+      return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
     function buildCoupangSearchUrl(keyword) {
       return `https://www.coupang.com/np/search?component=&q=${encodeURIComponent(keyword)}&channel=user`;
     }
@@ -1094,6 +1120,113 @@
       if (!normalizedKeyword) return false;
 
       return item.aliases.some(alias => normalizedKeyword.includes(normalizeKeywordText(alias)));
+    }
+
+    function getPartnerKeywordEntries() {
+      return COUPANG_PARTNERS_LINKS
+        .flatMap(item => {
+          const url = item.partnersUrl || buildCoupangSearchUrl(item.query);
+          const keywords = Array.from(new Set([item.label, item.query, ...(item.aliases || [])].filter(Boolean)));
+          return keywords.map(keyword => ({ keyword, url }));
+        })
+        .sort((a, b) => b.keyword.length - a.keyword.length);
+    }
+
+    function hasAsciiWordBoundaries(text, startIndex, endIndex) {
+      const asciiPattern = /[0-9a-zA-Z]/;
+      const prevChar = text[startIndex - 1];
+      const nextChar = text[endIndex];
+      return (!prevChar || !asciiPattern.test(prevChar)) && (!nextChar || !asciiPattern.test(nextChar));
+    }
+
+    function findPartnerKeywordMatches(text) {
+      const sourceText = String(text || '');
+      const matches = [];
+
+      getPartnerKeywordEntries().forEach(entry => {
+        const pattern = new RegExp(escapeRegExp(entry.keyword), 'gi');
+        const isAsciiKeyword = /^[0-9a-zA-Z]+$/.test(entry.keyword);
+        let match;
+
+        while ((match = pattern.exec(sourceText)) !== null) {
+          const startIndex = match.index;
+          const endIndex = startIndex + match[0].length;
+
+          if (isAsciiKeyword && !hasAsciiWordBoundaries(sourceText, startIndex, endIndex)) {
+            continue;
+          }
+
+          matches.push({
+            startIndex,
+            endIndex,
+            length: match[0].length,
+            url: entry.url
+          });
+        }
+      });
+
+      matches.sort((a, b) => a.startIndex - b.startIndex || b.length - a.length);
+
+      const filteredMatches = [];
+      let occupiedUntil = -1;
+
+      matches.forEach(match => {
+        if (match.startIndex < occupiedUntil) return;
+        filteredMatches.push(match);
+        occupiedUntil = match.endIndex;
+      });
+
+      return filteredMatches;
+    }
+
+    function highlightSearchKeyword(text, keyword) {
+      const sourceText = String(text || '');
+      const trimmedKeyword = String(keyword || '').trim();
+
+      if (!trimmedKeyword) {
+        return escapeHtml(sourceText);
+      }
+
+      const pattern = new RegExp(escapeRegExp(trimmedKeyword), 'gi');
+      let html = '';
+      let lastIndex = 0;
+      let match;
+
+      while ((match = pattern.exec(sourceText)) !== null) {
+        const startIndex = match.index;
+        const endIndex = startIndex + match[0].length;
+
+        html += escapeHtml(sourceText.slice(lastIndex, startIndex));
+        html += `<span class="match-highlight">${escapeHtml(match[0])}</span>`;
+        lastIndex = endIndex;
+      }
+
+      html += escapeHtml(sourceText.slice(lastIndex));
+      return html;
+    }
+
+    function formatSubtitleText(text, keyword = '') {
+      const sourceText = String(text || '');
+      const partnerMatches = findPartnerKeywordMatches(sourceText);
+
+      if (partnerMatches.length === 0) {
+        return highlightSearchKeyword(sourceText, keyword);
+      }
+
+      let html = '';
+      let lastIndex = 0;
+
+      partnerMatches.forEach(match => {
+        html += highlightSearchKeyword(sourceText.slice(lastIndex, match.startIndex), keyword);
+
+        const linkedText = highlightSearchKeyword(sourceText.slice(match.startIndex, match.endIndex), keyword);
+        html += `<a href="${escapeHtml(match.url)}" target="_blank" rel="noopener noreferrer sponsored" class="partner-inline-link">${linkedText}</a>`;
+
+        lastIndex = match.endIndex;
+      });
+
+      html += highlightSearchKeyword(sourceText.slice(lastIndex), keyword);
+      return html;
     }
 
     function renderPartnerLinks(keyword) {
@@ -1859,14 +1992,13 @@
         `;
         
         result.matches.forEach((match, matchIndex) => {
-          const regex = new RegExp(currentKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-          const highlightedText = match.text.replace(regex, `<span class="match-highlight">$&</span>`);
+          const formattedText = formatSubtitleText(match.text, currentKeyword);
           const timeStart = match.time.split(' --> ')[0];
           const seconds = convertTimeToSeconds(timeStart);
 
           batchHTML += `
             <li class="subtitle-match" style="animation-delay: ${(batchVideoIndex % RESULTS_PER_PAGE) * 0.1 + matchIndex * 0.05}s">
-              <div class="match-context">${highlightedText}</div>
+              <div class="match-context">${formattedText}</div>
               <div class="match-controls">
                 <a href="https://youtube.com/watch?v=${result.videoId}&t=${Math.floor(seconds)}" target="_blank" class="match-time">
                   <i class="fas fa-play"></i>
@@ -1965,9 +2097,10 @@
             const sub = subtitles[i];
             const timeStart = sub.time.split(' --> ')[0];
             const isCurrent = i === matchArrayIndex;
+            const formattedText = formatSubtitleText(sub.text, currentKeyword);
             surroundingHTML += `
                 <div class="surrounding-subtitle-item ${isCurrent ? 'current' : ''}">
-                    <span>${timeStart}</span> ${sub.text}
+                    <span>${timeStart}</span> ${formattedText}
                 </div>
             `;
         }
