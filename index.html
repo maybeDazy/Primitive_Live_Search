@@ -97,6 +97,24 @@
       max-width: 600px;
       margin: 0 auto;
     }
+
+    .affiliate-disclosure {
+      margin: -12px auto 24px;
+      max-width: 920px;
+      background: linear-gradient(135deg, rgba(66, 133, 244, 0.12), rgba(52, 168, 83, 0.1));
+      border: 1px solid rgba(66, 133, 244, 0.2);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+      color: var(--text-secondary);
+      font-size: 13px;
+      line-height: 1.55;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .affiliate-disclosure i {
+      color: var(--accent-color);
+      margin-right: 8px;
+    }
     
     .search-container {
       background-color: var(--card-bg);
@@ -329,12 +347,6 @@
       color: var(--accent-color);
     }
 
-    .partner-links-note {
-      width: 100%;
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
-    
     .result-group {
       margin-bottom: 30px;
       border-bottom: 1px solid var(--border-color);
@@ -700,34 +712,15 @@
       font-size: 14px;
       color: var(--text-secondary);
       display: none;
-      opacity: 0;
-      transform: translateY(-6px);
       overflow: hidden;
     }
 
     .surrounding-subtitles.is-visible {
       display: block;
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    .surrounding-subtitles.is-entering {
-      animation: surroundingExpand 0.24s ease;
     }
 
     .surrounding-subtitles.is-collapsing {
       animation: surroundingCollapse 0.18s ease forwards;
-    }
-
-    @keyframes surroundingExpand {
-      from {
-        opacity: 0;
-        transform: translateY(-8px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
     }
 
     @keyframes surroundingCollapse {
@@ -747,18 +740,6 @@
       padding: 8px 10px;
       border-radius: var(--radius-sm);
       cursor: pointer;
-      animation: surroundingItemIn 0.22s ease both;
-    }
-
-    @keyframes surroundingItemIn {
-      from {
-        opacity: 0;
-        transform: translateX(-8px);
-      }
-      to {
-        opacity: 1;
-        transform: translateX(0);
-      }
     }
 
     .surrounding-subtitle-item.current {
@@ -788,7 +769,7 @@
       position: fixed;
       right: 20px;
       bottom: 20px;
-      width: min(420px, calc(100vw - 24px));
+      width: min(520px, calc(100vw - 24px));
       background-color: var(--card-bg);
       border: 1px solid var(--border-color);
       border-radius: var(--radius-lg);
@@ -876,7 +857,7 @@
     .inline-player-shell {
       aspect-ratio: 16 / 9;
       background: #000;
-      min-height: 236px;
+      min-height: 292px;
     }
 
     .inline-player-frame,
@@ -990,6 +971,11 @@
       <h1>프리미티브 라이브 영상 자막 검색기 <span style="font-size: 0.6em; color: var(--text-secondary);">by 로우</span></h1>
       <p>다운로드한 자막 파일에서 내용을 검색하고 원하는 순간으로 이동하세요</p>
     </header>
+
+    <div class="affiliate-disclosure">
+      <i class="fas fa-balance-scale"></i>
+      이 페이지에는 쿠팡 파트너스, iHerb 추천 코드 및 기타 외부 링크가 포함될 수 있으며, 이에 따른 수수료를 제공받을 수 있습니다. 링크는 새 탭에서 열립니다.
+    </div>
     
     <div class="search-container">
       <div class="search-tabs">
@@ -1062,12 +1048,16 @@
   </div>
 
   <!-- 업데이트 로그 -->
-  <div id="update-log" class="update-log">
+    <div id="update-log" class="update-log">
     <div class="update-log-header">
       <i class="fas fa-bell"></i>
       업데이트
     </div>
     <div class="update-log-content">
+      <div class="update-item">
+        <span class="update-date">2026-03-19</span>
+        유튜브 영상 페이지 내에서 보기 기능을 추가하였습니다
+      </div>
       <div class="update-item">
         <span class="update-date">2026-03-19</span>
         프리미티브님 유튜브 영상 자막 19개를 추가하였습니다
@@ -1852,9 +1842,17 @@
     function animateSurroundingContainer(surroundingDiv) {
       if (!surroundingDiv) return;
 
-      surroundingDiv.classList.remove('is-collapsing', 'is-entering');
-      void surroundingDiv.offsetWidth;
-      surroundingDiv.classList.add('is-visible', 'is-entering');
+      surroundingDiv.classList.remove('is-collapsing');
+      surroundingDiv.classList.add('is-visible');
+    }
+
+    function scrollMatchIntoView(matchElement) {
+      if (!matchElement || typeof matchElement.scrollIntoView !== 'function') return;
+
+      matchElement.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
     }
 
     function collapseSurroundingSubtitles(matchElement) {
@@ -1863,9 +1861,7 @@
         return;
       }
 
-      setSurroundingButtonState(matchElement, 'loading');
       surroundingDiv.dataset.expanded = 'false';
-      surroundingDiv.classList.remove('is-entering');
       surroundingDiv.classList.add('is-collapsing');
 
       setTimeout(() => {
@@ -1975,7 +1971,6 @@
       partnerLinksElement.innerHTML = `
         <span class="partner-links-label">관련 제품 링크</span>
         <div class="partner-links-list">${linksHTML}</div>
-        <div class="partner-links-note">이 페이지에는 쿠팡 파트너스, iHerb 추천 코드 및 기타 외부 링크가 포함될 수 있으며, 이에 따른 수수료를 제공받을 수 있습니다. 링크는 새 탭에서 열립니다.</div>
       `;
     }
 
@@ -2858,6 +2853,7 @@
 
         updateSubtitleMatchFocus(matchElement, subtitles[centerIndex], filepath, centerIndex);
         renderSurroundingSubtitles(matchElement, subtitles, filepath, centerIndex);
+        scrollMatchIntoView(matchElement);
     }
 
     // 자막 데이터 가져오기 및 캐싱 함수 (메모리 캐시 사용)
