@@ -117,6 +117,7 @@ function runCommand(command, args, options = {}) {
 
 function isSkippableTranscriptError(error) {
   const msg = String(error?.message || '').toLowerCase();
+  const stderr = String(error?.stderr || '').toLowerCase();
   return (
     msg.includes('transcriptsdisabled') ||
     msg.includes('notranscriptfound') ||
@@ -128,7 +129,10 @@ function isSkippableTranscriptError(error) {
     msg.includes('requestexception') ||
     msg.includes('proxyerror') ||
     msg.includes('tunnel connection failed') ||
-    msg.includes('403 forbidden')
+    msg.includes('403 forbidden') ||
+    stderr.includes('transcriptsdisabled') ||
+    stderr.includes('notranscriptfound') ||
+    stderr.includes('could not retrieve a transcript')
   );
 }
 
@@ -274,12 +278,14 @@ function updateIndexLog(indexHtml, count, dateText) {
 }
 
 async function rebuildZip() {
+  if (fs.existsSync(ZIP_PATH)) fs.unlinkSync(ZIP_PATH);
+
   if (process.platform === 'win32') {
-    console.warn('Windows 환경에서는 subtitles.zip 자동 재생성을 건너뜁니다.');
+    const psCommand = `Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::CreateFromDirectory('subtitles', 'subtitles/subtitles.zip', [System.IO.Compression.CompressionLevel]::Optimal, $false)`;
+    await runCommand('powershell', ['-Command', psCommand]);
     return;
   }
 
-  if (fs.existsSync(ZIP_PATH)) fs.unlinkSync(ZIP_PATH);
   await runCommand('zip', ['-q', '-j', ZIP_PATH, ...fs.readdirSync(SUBTITLES_DIR)
     .filter((f) => /\.(srt|vtt)$/i.test(f))
     .map((f) => path.join(SUBTITLES_DIR, f))
