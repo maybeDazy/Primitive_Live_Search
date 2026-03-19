@@ -287,6 +287,53 @@
     .summary i {
       color: var(--accent-color);
     }
+
+    .partner-links {
+      margin: -8px 0 22px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 12px;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .partner-links:empty {
+      display: none;
+    }
+
+    .partner-links-label {
+      font-weight: 600;
+      color: var(--text-color);
+    }
+
+    .partner-links-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .partner-link-anchor {
+      color: var(--secondary-color);
+      font-weight: 500;
+      text-decoration: underline;
+      text-decoration-thickness: 1.5px;
+      text-underline-offset: 3px;
+    }
+
+    .partner-link-anchor:hover {
+      color: var(--secondary-hover);
+    }
+
+    .partner-link-anchor.active {
+      color: var(--accent-color);
+    }
+
+    .partner-links-note {
+      width: 100%;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
     
     .result-group {
       margin-bottom: 30px;
@@ -770,6 +817,7 @@
     
     <div id="results-container" class="results-container">
       <div id="summary" class="summary"></div>
+      <div id="partner-links" class="partner-links"></div>
       <div id="results"></div>
     </div>
   </div>
@@ -821,6 +869,39 @@
     const SUBTITLE_STORE_NAME = 'parsedSubtitles';
     const SUBTITLE_META_STORE_NAME = 'cacheMeta';
     const SUBTITLE_CACHE_VERSION = 'v2';
+    // partnersUrl에 실제 쿠팡 파트너스 URL을 넣으면 기본 검색 URL 대신 해당 링크로 이동합니다.
+    const COUPANG_PARTNERS_LINKS = [
+      {
+        label: '버터',
+        query: '버터',
+        aliases: ['버터', '무염버터', '기버터'],
+        partnersUrl: 'https://link.coupang.com/a/d7cWh1'
+      },
+      {
+        label: '소고기',
+        query: '소고기',
+        aliases: ['소고기', '쇠고기', '비프', 'beef'],
+        partnersUrl: 'https://link.coupang.com/a/d7cZkE'
+      },
+      {
+        label: '양고기',
+        query: '양고기',
+        aliases: ['양고기', '램', 'lamb'],
+        partnersUrl: 'https://link.coupang.com/a/d7cZQF'
+      },
+      {
+        label: 'K2',
+        query: 'K2',
+        aliases: ['k2', '비타민k2', '비타민 k2'],
+        partnersUrl: 'https://link.coupang.com/a/d7c5dO'
+      },
+      {
+        label: 'DK',
+        query: 'DK',
+        aliases: ['dk', '비타민dk', '비타민 dk', 'd3k2', '비타민dk2', '비타민 dk2'],
+        partnersUrl: 'https://link.coupang.com/a/d7c7f5'
+      }
+    ];
     
     // 무한 스크롤(지연 로딩) 관련 변수
     let currentResults = [];
@@ -874,6 +955,8 @@
             aiDisclaimer.style.display = 'none';
             document.getElementById('search-input').placeholder = '자막 내용에서 검색어를 입력하세요';
           }
+
+          renderPartnerLinks(currentSearchMode === 'subtitle' ? currentKeyword : '');
         });
       });
 
@@ -996,6 +1079,54 @@
       }
 
       return null;
+    }
+
+    function normalizeKeywordText(text) {
+      return (text || '').toLowerCase().replace(/\s+/g, '');
+    }
+
+    function buildCoupangSearchUrl(keyword) {
+      return `https://www.coupang.com/np/search?component=&q=${encodeURIComponent(keyword)}&channel=user`;
+    }
+
+    function isPartnerKeywordActive(item, keyword) {
+      const normalizedKeyword = normalizeKeywordText(keyword);
+      if (!normalizedKeyword) return false;
+
+      return item.aliases.some(alias => normalizedKeyword.includes(normalizeKeywordText(alias)));
+    }
+
+    function renderPartnerLinks(keyword) {
+      const partnerLinksElement = document.getElementById('partner-links');
+      if (!partnerLinksElement) return;
+
+      if (currentSearchMode !== 'subtitle' || !keyword) {
+        partnerLinksElement.innerHTML = '';
+        return;
+      }
+
+      const linkItems = COUPANG_PARTNERS_LINKS.map(item => ({
+        ...item,
+        isActive: isPartnerKeywordActive(item, keyword),
+        url: item.partnersUrl || buildCoupangSearchUrl(item.query)
+      }));
+
+      const linksHTML = linkItems.map(item => `
+        <a
+          href="${item.url}"
+          target="_blank"
+          rel="noopener noreferrer sponsored"
+          class="partner-link-anchor${item.isActive ? ' active' : ''}"
+        >
+          ${item.label}
+        </a>
+      `).join('');
+
+      partnerLinksElement.innerHTML = `
+        <span class="partner-links-label">관련 쿠팡 링크</span>
+        <div class="partner-links-list">${linksHTML}</div>
+        <div class="partner-links-note">링크는 새 탭에서 열립니다.</div>
+      `;
     }
 
     function getSubtitleCacheSignature() {
@@ -1501,6 +1632,8 @@
       const resultsElement = document.getElementById('results');
       const summaryElement = document.getElementById('summary');
 
+      renderPartnerLinks('');
+
       if (results.length === 0) {
         summaryElement.innerHTML = '<i class="fas fa-info-circle"></i> 검색 결과가 없습니다.';
         resultsElement.innerHTML = `
@@ -1661,6 +1794,8 @@
       if (resultsObserver) {
         resultsObserver.disconnect();
       }
+
+      renderPartnerLinks(keyword);
       
       const totalMatches = results.reduce((sum, result) => sum + result.matches.length, 0);
       
