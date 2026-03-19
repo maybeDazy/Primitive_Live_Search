@@ -427,17 +427,21 @@
     }
 
     .surrounding-subtitles.is-shifting-prev {
-      animation: surroundingShiftPrev 0.26s ease;
+      animation: surroundingShiftPrev 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: transform, opacity;
+      backface-visibility: hidden;
     }
 
     .surrounding-subtitles.is-shifting-next {
-      animation: surroundingShiftNext 0.26s ease;
+      animation: surroundingShiftNext 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: transform, opacity;
+      backface-visibility: hidden;
     }
 
     @keyframes surroundingShiftPrev {
       from {
-        opacity: 0.72;
-        transform: translateY(-12px);
+        opacity: 0.86;
+        transform: translateY(-8px);
       }
       to {
         opacity: 1;
@@ -447,8 +451,8 @@
 
     @keyframes surroundingShiftNext {
       from {
-        opacity: 0.72;
-        transform: translateY(12px);
+        opacity: 0.86;
+        transform: translateY(8px);
       }
       to {
         opacity: 1;
@@ -1912,7 +1916,7 @@
 
       setTimeout(() => {
         surroundingDiv.classList.remove(animationClass);
-      }, 280);
+      }, 440);
     }
 
     function collapseSurroundingSubtitles(matchElement) {
