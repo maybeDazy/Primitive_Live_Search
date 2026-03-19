@@ -427,14 +427,12 @@
     }
 
     .subtitle-match.is-sliding-prev .match-context,
-    .subtitle-match.is-sliding-prev .match-controls,
-    .subtitle-match.is-sliding-prev .surrounding-subtitles {
+    .subtitle-match.is-sliding-prev .match-controls {
       animation: subtitleFocusPrev 0.26s ease;
     }
 
     .subtitle-match.is-sliding-next .match-context,
-    .subtitle-match.is-sliding-next .match-controls,
-    .subtitle-match.is-sliding-next .surrounding-subtitles {
+    .subtitle-match.is-sliding-next .match-controls {
       animation: subtitleFocusNext 0.26s ease;
     }
 
@@ -742,11 +740,15 @@
     .surrounding-subtitles {
       margin-top: 15px;
       padding-top: 15px;
+      padding-right: 6px;
       border-top: 1px dashed var(--border-color);
       font-size: 14px;
       color: var(--text-secondary);
       display: none;
-      overflow: hidden;
+      max-height: 320px;
+      overflow-x: hidden;
+      overflow-y: auto;
+      scroll-behavior: smooth;
     }
 
     .surrounding-subtitles.is-visible {
@@ -1880,13 +1882,25 @@
       surroundingDiv.classList.add('is-visible');
     }
 
-    function scrollMatchIntoView(matchElement) {
-      if (!matchElement || typeof matchElement.scrollIntoView !== 'function') return;
+    function scrollCurrentSurroundingSubtitleIntoView(matchElement, behavior = 'smooth') {
+      const surroundingDiv = matchElement?.querySelector('.surrounding-subtitles');
+      const currentItem = surroundingDiv?.querySelector('.surrounding-subtitle-item.current');
+      if (!surroundingDiv || !currentItem) return;
 
-      matchElement.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center'
-      });
+      const targetTop = Math.max(
+        0,
+        currentItem.offsetTop - (surroundingDiv.clientHeight / 2) + (currentItem.offsetHeight / 2)
+      );
+
+      if (typeof surroundingDiv.scrollTo === 'function') {
+        surroundingDiv.scrollTo({
+          top: targetTop,
+          behavior
+        });
+        return;
+      }
+
+      surroundingDiv.scrollTop = targetTop;
     }
 
     function animateMatchFocusChange(matchElement, direction) {
@@ -2888,6 +2902,9 @@
 
         updateSubtitleMatchFocus(matchElement, subtitles[matchArrayIndex], filepath, matchArrayIndex);
         renderSurroundingSubtitles(matchElement, subtitles, filepath, matchArrayIndex);
+        requestAnimationFrame(() => {
+            scrollCurrentSurroundingSubtitleIntoView(matchElement, 'auto');
+        });
     }
 
     async function focusSurroundingSubtitle(itemElement, filepath, centerIndexStr) {
@@ -2908,7 +2925,9 @@
         updateSubtitleMatchFocus(matchElement, subtitles[centerIndex], filepath, centerIndex);
         renderSurroundingSubtitles(matchElement, subtitles, filepath, centerIndex);
         animateMatchFocusChange(matchElement, direction);
-        scrollMatchIntoView(matchElement);
+        requestAnimationFrame(() => {
+            scrollCurrentSurroundingSubtitleIntoView(matchElement, 'smooth');
+        });
     }
 
     // 자막 데이터 가져오기 및 캐싱 함수 (메모리 캐시 사용)
