@@ -351,13 +351,6 @@
       margin-bottom: 30px;
       border-bottom: 1px solid var(--border-color);
       padding-bottom: 25px;
-      animation: slideIn 0.5s ease;
-      animation-fill-mode: both;
-    }
-    
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateX(-20px); }
-      to { opacity: 1; transform: translateX(0); }
     }
     
     .result-group:last-child {
@@ -414,7 +407,7 @@
       padding: 15px 20px;
       position: relative;
       border-left: 3px solid var(--secondary-color);
-      transition: transform 0.2s, box-shadow 0.2s;
+      transition: box-shadow 0.2s;
     }
     
     [data-theme="dark"] .subtitle-match {
@@ -422,42 +415,7 @@
     }
     
     .subtitle-match:hover {
-      transform: translateY(-3px);
       box-shadow: var(--shadow-sm);
-    }
-
-    .surrounding-subtitles.is-shifting-prev {
-      animation: surroundingShiftPrev 0.42s cubic-bezier(0.22, 1, 0.36, 1);
-      will-change: transform, opacity;
-      backface-visibility: hidden;
-    }
-
-    .surrounding-subtitles.is-shifting-next {
-      animation: surroundingShiftNext 0.42s cubic-bezier(0.22, 1, 0.36, 1);
-      will-change: transform, opacity;
-      backface-visibility: hidden;
-    }
-
-    @keyframes surroundingShiftPrev {
-      from {
-        opacity: 0.86;
-        transform: translateY(-8px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    @keyframes surroundingShiftNext {
-      from {
-        opacity: 0.86;
-        transform: translateY(8px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
     }
 
     .match-context {
@@ -465,13 +423,6 @@
       line-height: 1.6;
       margin-bottom: 15px;
       color: var(--text-color);
-    }
-    
-    .match-highlight {
-      background-color: var(--highlight-color);
-      padding: 2px 4px;
-      border-radius: 3px;
-      font-weight: 500;
     }
 
     .partner-inline-link {
@@ -750,26 +701,10 @@
       max-height: 320px;
       overflow-x: hidden;
       overflow-y: auto;
-      scroll-behavior: smooth;
     }
 
     .surrounding-subtitles.is-visible {
       display: block;
-    }
-
-    .surrounding-subtitles.is-collapsing {
-      animation: surroundingCollapse 0.18s ease forwards;
-    }
-
-    @keyframes surroundingCollapse {
-      from {
-        opacity: 1;
-        transform: translateY(0);
-      }
-      to {
-        opacity: 0;
-        transform: translateY(-6px);
-      }
     }
 
     .surrounding-subtitle-item {
@@ -1509,6 +1444,46 @@
       return (text || '').toLowerCase().replace(/\s+/g, '');
     }
 
+    function computeSubtitleMatchScore(text, keyword) {
+      const normalizedText = normalizeKeywordText(text);
+      const normalizedKeyword = normalizeKeywordText(keyword);
+
+      if (!normalizedText || !normalizedKeyword) {
+        return 0;
+      }
+
+      const firstIndex = normalizedText.indexOf(normalizedKeyword);
+      if (firstIndex === -1) {
+        return 0;
+      }
+
+      const occurrenceCount = normalizedText.split(normalizedKeyword).length - 1;
+      const exactBonus = normalizedText === normalizedKeyword ? 10000 : 0;
+      const prefixBonus = firstIndex === 0 ? 500 : Math.max(0, 200 - firstIndex);
+      const densityScore = Math.round((normalizedKeyword.length / normalizedText.length) * 1000);
+
+      return exactBonus + (occurrenceCount * 600) + prefixBonus + densityScore;
+    }
+
+    function rankSubtitleMatches(matches, keyword) {
+      return matches
+        .map(match => ({
+          ...match,
+          matchScore: computeSubtitleMatchScore(match.text, keyword)
+        }))
+        .sort((a, b) => b.matchScore - a.matchScore || a.arrayIndex - b.arrayIndex);
+    }
+
+    function computeResultRelevanceScore(matches) {
+      if (!matches.length) {
+        return 0;
+      }
+
+      const bestScore = matches[0].matchScore || 0;
+      const totalScore = matches.reduce((sum, match) => sum + (match.matchScore || 0), 0);
+      return (bestScore * 1000) + totalScore + matches.length;
+    }
+
     function escapeHtml(text) {
       return String(text || '')
         .replace(/&/g, '&amp;')
@@ -1597,29 +1572,7 @@
     }
 
     function highlightSearchKeyword(text, keyword) {
-      const sourceText = String(text || '');
-      const trimmedKeyword = String(keyword || '').trim();
-
-      if (!trimmedKeyword) {
-        return escapeHtml(sourceText);
-      }
-
-      const pattern = new RegExp(escapeRegExp(trimmedKeyword), 'gi');
-      let html = '';
-      let lastIndex = 0;
-      let match;
-
-      while ((match = pattern.exec(sourceText)) !== null) {
-        const startIndex = match.index;
-        const endIndex = startIndex + match[0].length;
-
-        html += escapeHtml(sourceText.slice(lastIndex, startIndex));
-        html += `<span class="match-highlight">${escapeHtml(match[0])}</span>`;
-        lastIndex = endIndex;
-      }
-
-      html += escapeHtml(sourceText.slice(lastIndex));
-      return html;
+      return escapeHtml(String(text || ''));
     }
 
     function formatSubtitleText(text, keyword = '') {
@@ -1880,11 +1833,10 @@
     function animateSurroundingContainer(surroundingDiv) {
       if (!surroundingDiv) return;
 
-      surroundingDiv.classList.remove('is-collapsing');
       surroundingDiv.classList.add('is-visible');
     }
 
-    function scrollCurrentSurroundingSubtitleIntoView(matchElement, behavior = 'smooth') {
+    function scrollCurrentSurroundingSubtitleIntoView(matchElement) {
       const surroundingDiv = matchElement?.querySelector('.surrounding-subtitles');
       const currentItem = surroundingDiv?.querySelector('.surrounding-subtitle-item.current');
       if (!surroundingDiv || !currentItem) return;
@@ -1894,29 +1846,7 @@
         currentItem.offsetTop - (surroundingDiv.clientHeight / 2) + (currentItem.offsetHeight / 2)
       );
 
-      if (typeof surroundingDiv.scrollTo === 'function') {
-        surroundingDiv.scrollTo({
-          top: targetTop,
-          behavior
-        });
-        return;
-      }
-
       surroundingDiv.scrollTop = targetTop;
-    }
-
-    function animateSurroundingFocusChange(matchElement, direction) {
-      const surroundingDiv = matchElement?.querySelector('.surrounding-subtitles');
-      if (!surroundingDiv || (direction !== 'prev' && direction !== 'next')) return;
-
-      const animationClass = direction === 'prev' ? 'is-shifting-prev' : 'is-shifting-next';
-      surroundingDiv.classList.remove('is-shifting-prev', 'is-shifting-next');
-      void surroundingDiv.offsetWidth;
-      surroundingDiv.classList.add(animationClass);
-
-      setTimeout(() => {
-        surroundingDiv.classList.remove(animationClass);
-      }, 440);
     }
 
     function collapseSurroundingSubtitles(matchElement) {
@@ -1926,14 +1856,10 @@
       }
 
       surroundingDiv.dataset.expanded = 'false';
-      surroundingDiv.classList.add('is-collapsing');
-
-      setTimeout(() => {
-        surroundingDiv.classList.remove('is-collapsing', 'is-visible');
-        surroundingDiv.innerHTML = '';
-        surroundingDiv.style.display = 'none';
-        setSurroundingButtonState(matchElement, 'collapsed');
-      }, 180);
+      surroundingDiv.classList.remove('is-visible');
+      surroundingDiv.innerHTML = '';
+      surroundingDiv.style.display = 'none';
+      setSurroundingButtonState(matchElement, 'collapsed');
     }
 
     function updateSubtitleMatchFocus(matchElement, subtitle, filepath, centerIndex) {
@@ -2489,11 +2415,13 @@
           const matches = await searchInSubtitle(file, keyword);
           
           if (matches.length > 0) {
+            const rankedMatches = rankSubtitleMatches(matches, keyword);
             searchResults.push({
               videoId: file.videoId,
               videoTitle: file.videoTitle,
               subtitle: file.subtitle,
-              matches: matches
+              matches: rankedMatches,
+              relevanceScore: computeResultRelevanceScore(rankedMatches)
             });
           }
           
@@ -2505,6 +2433,12 @@
       statusElement.innerHTML = '<i class="fas fa-check-circle"></i> 검색 완료';
       progressBar.style.display = 'none';
       resultsContainer.style.display = 'block';
+
+      searchResults.sort((a, b) =>
+        (b.relevanceScore || 0) - (a.relevanceScore || 0) ||
+        b.matches.length - a.matches.length ||
+        a.videoTitle.localeCompare(b.videoTitle, 'ko')
+      );
       
       // 결과 표시
       displayResults(searchResults, keyword);
@@ -2555,12 +2489,10 @@
 
       summaryElement.innerHTML = `<i class="fas fa-robot"></i> ${results.length}개의 AI Q&A 결과를 찾았습니다.`;
 
-      const regex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-
       let html = '';
       results.forEach((item, index) => {
-        const highlightedQuestion = item.question.replace(regex, `<span class="match-highlight">$&</span>`);
-        const highlightedAnswer = item.answer.replace(regex, `<span class="match-highlight">$&</span>`);
+        const highlightedQuestion = escapeHtml(item.question);
+        const highlightedAnswer = escapeHtml(item.answer);
 
         html += `
           <div class="qa-result-item" style="animation-delay: ${index * 0.05}s">
@@ -2735,7 +2667,7 @@
         return;
       }
       
-      summaryElement.innerHTML = `<i class="fas fa-check-circle"></i> ${results.length}개 비디오에서 ${totalMatches}개의 일치하는 자막을 찾았습니다.`;
+      summaryElement.innerHTML = `<i class="fas fa-check-circle"></i> ${results.length}개 비디오에서 ${totalMatches}개의 일치하는 자막을 찾았습니다. 가장 일치하는 순으로 정렬했습니다.`;
       
       // 무한 스크롤 관찰자 설정
       resultsObserver = new IntersectionObserver((entries) => {
@@ -2905,9 +2837,7 @@
 
         updateSubtitleMatchFocus(matchElement, subtitles[matchArrayIndex], filepath, matchArrayIndex);
         renderSurroundingSubtitles(matchElement, subtitles, filepath, matchArrayIndex);
-        requestAnimationFrame(() => {
-            scrollCurrentSurroundingSubtitleIntoView(matchElement, 'auto');
-        });
+        scrollCurrentSurroundingSubtitleIntoView(matchElement);
     }
 
     async function focusSurroundingSubtitle(itemElement, filepath, centerIndexStr) {
@@ -2918,19 +2848,9 @@
         const subtitles = await getParsedSubtitles(filepath);
         if (!subtitles || !subtitles[centerIndex]) return;
 
-        const currentIndex = parseInt(matchElement.dataset.currentIndex || '', 10);
-        let direction = null;
-
-        if (!Number.isNaN(currentIndex) && currentIndex !== centerIndex) {
-            direction = centerIndex < currentIndex ? 'prev' : 'next';
-        }
-
         updateSubtitleMatchFocus(matchElement, subtitles[centerIndex], filepath, centerIndex);
         renderSurroundingSubtitles(matchElement, subtitles, filepath, centerIndex);
-        animateSurroundingFocusChange(matchElement, direction);
-        requestAnimationFrame(() => {
-            scrollCurrentSurroundingSubtitleIntoView(matchElement, 'smooth');
-        });
+        scrollCurrentSurroundingSubtitleIntoView(matchElement);
     }
 
     // 자막 데이터 가져오기 및 캐싱 함수 (메모리 캐시 사용)
