@@ -425,6 +425,15 @@
       color: var(--text-color);
     }
 
+    .match-highlight {
+      color: var(--secondary-color);
+      font-weight: 700;
+      text-decoration: underline;
+      text-decoration-color: currentColor;
+      text-decoration-thickness: 2px;
+      text-underline-offset: 3px;
+    }
+
     .partner-inline-link {
       color: inherit;
       font-weight: 600;
@@ -1572,7 +1581,29 @@
     }
 
     function highlightSearchKeyword(text, keyword) {
-      return escapeHtml(String(text || ''));
+      const sourceText = String(text || '');
+      const trimmedKeyword = String(keyword || '').trim();
+
+      if (!trimmedKeyword) {
+        return escapeHtml(sourceText);
+      }
+
+      const pattern = new RegExp(escapeRegExp(trimmedKeyword), 'gi');
+      let html = '';
+      let lastIndex = 0;
+      let match;
+
+      while ((match = pattern.exec(sourceText)) !== null) {
+        const startIndex = match.index;
+        const endIndex = startIndex + match[0].length;
+
+        html += escapeHtml(sourceText.slice(lastIndex, startIndex));
+        html += `<span class="match-highlight">${escapeHtml(match[0])}</span>`;
+        lastIndex = endIndex;
+      }
+
+      html += escapeHtml(sourceText.slice(lastIndex));
+      return html;
     }
 
     function formatSubtitleText(text, keyword = '') {
@@ -2491,8 +2522,8 @@
 
       let html = '';
       results.forEach((item, index) => {
-        const highlightedQuestion = escapeHtml(item.question);
-        const highlightedAnswer = escapeHtml(item.answer);
+        const highlightedQuestion = highlightSearchKeyword(item.question, keyword);
+        const highlightedAnswer = highlightSearchKeyword(item.answer, keyword);
 
         html += `
           <div class="qa-result-item" style="animation-delay: ${index * 0.05}s">
