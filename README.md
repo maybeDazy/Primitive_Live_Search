@@ -29,13 +29,13 @@ Repository Secret에 아래 값을 추가하세요.
 ### 수동 실행
 ```bash
 python -m pip install -r scripts/requirements.txt
-YOUTUBE_API_KEY=YOUR_KEY MIN_VIDEO_AGE_DAYS=7 YT_TRANSCRIPT_PROXY=socks5://itsmelow:itsmedaize@proxy-1.daize.pro:1666 RETRY_WITHOUT_PROXY_ON_BLOCK=true node scripts/auto_update_subtitles.mjs
+YOUTUBE_API_KEY=YOUR_KEY MIN_VIDEO_AGE_DAYS=7 RETRY_WITHOUT_PROXY_ON_BLOCK=true node scripts/auto_update_subtitles.mjs
 ```
 
 테스트 모드(파일 미반영):
 ```bash
 python -m pip install -r scripts/requirements.txt
-YOUTUBE_API_KEY=YOUR_KEY MIN_VIDEO_AGE_DAYS=7 YT_TRANSCRIPT_PROXY=socks5://itsmelow:itsmedaize@proxy-1.daize.pro:1666 RETRY_WITHOUT_PROXY_ON_BLOCK=true node scripts/auto_update_subtitles.mjs --dry-run
+YOUTUBE_API_KEY=YOUR_KEY MIN_VIDEO_AGE_DAYS=7 RETRY_WITHOUT_PROXY_ON_BLOCK=true node scripts/auto_update_subtitles.mjs --dry-run
 ```
 
 ### 로컬 env 파일 사용 (권장)
@@ -48,7 +48,7 @@ MIN_VIDEO_AGE_DAYS=7
 CHANNEL_ID=UCqaSH5Js_s80nIY3P_wqCcg
 SUBTITLE_LANG=ko
 PYTHON_BIN=python3
-YT_TRANSCRIPT_PROXY=socks5://itsmelow:itsmedaize@proxy-1.daize.pro:1666
+YT_TRANSCRIPT_PROXY=
 RETRY_WITHOUT_PROXY_ON_BLOCK=true
 ENV
 
