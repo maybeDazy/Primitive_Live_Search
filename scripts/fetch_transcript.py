@@ -68,15 +68,31 @@ def _fetch_with_fallback(api: YouTubeTranscriptApi, video_id: str, lang: str):
     raise NoTranscriptFound(video_id, [lang], transcript_list)
 
 
+def _entry_to_dict(entry) -> dict:
+    if isinstance(entry, dict):
+        return {
+            "text": entry.get("text", ""),
+            "start": entry.get("start", 0.0),
+            "duration": entry.get("duration", 0.0),
+        }
+
+    return {
+        "text": getattr(entry, "text", ""),
+        "start": getattr(entry, "start", 0.0),
+        "duration": getattr(entry, "duration", 0.0),
+    }
+
+
 def _deduplicate_transcript(transcript: list) -> list:
     """YouTube 자동 생성 자막 등에서 발생하는 중복 텍스트 제거"""
     if not transcript:
         return transcript
 
     deduped = []
-    
-    for entry in transcript:
-        text = entry.get("text", "").strip()
+
+    for raw_entry in transcript:
+        entry = _entry_to_dict(raw_entry)
+        text = entry["text"].strip()
         if not text:
             continue
 
@@ -85,7 +101,7 @@ def _deduplicate_transcript(transcript: list) -> list:
             continue
 
         prev = deduped[-1]
-        prev_text = prev.get("text", "").strip()
+        prev_text = prev["text"].strip()
 
         # 1. 완전 동일한 경우 건너뜀
         if text == prev_text:
@@ -100,7 +116,7 @@ def _deduplicate_transcript(transcript: list) -> list:
         # 3. 'A B' + 'B' -> 'A B' (접미어 중복)
         if prev_text.endswith(text):
             # 현재 항목을 무시하고 이전 항목의 시간을 연장
-            prev["duration"] += entry.get("duration", 0)
+            prev["duration"] += entry["duration"]
             continue
 
         # 4. 'A B' + 'B C' -> 'A B C' (부분 겹침 - 자동자막의 흔한 패턴)
@@ -115,7 +131,7 @@ def _deduplicate_transcript(transcript: list) -> list:
                 # 겹치는 부분을 제외하고 합침
                 new_text = " ".join(prev_words + curr_words[i:])
                 prev["text"] = new_text
-                prev["duration"] += entry.get("duration", 0)
+                prev["duration"] += entry["duration"]
                 overlap_found = True
                 break
         
