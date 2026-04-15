@@ -68,19 +68,30 @@ def _fetch_with_fallback(api: YouTubeTranscriptApi, video_id: str, lang: str):
     raise NoTranscriptFound(video_id, [lang], transcript_list)
 
 
-def _entry_to_dict(entry) -> dict:
+def _get_text(entry) -> str:
     if isinstance(entry, dict):
-        return {
-            "text": entry.get("text", ""),
-            "start": entry.get("start", 0.0),
-            "duration": entry.get("duration", 0.0),
-        }
+        return str(entry.get("text", ""))
+    return str(getattr(entry, "text", ""))
 
-    return {
-        "text": getattr(entry, "text", ""),
-        "start": getattr(entry, "start", 0.0),
-        "duration": getattr(entry, "duration", 0.0),
-    }
+
+def _set_text(entry, text: str) -> None:
+    if isinstance(entry, dict):
+        entry["text"] = text
+    else:
+        entry.text = text
+
+
+def _get_duration(entry) -> float:
+    if isinstance(entry, dict):
+        return float(entry.get("duration", 0.0))
+    return float(getattr(entry, "duration", 0.0))
+
+
+def _add_duration(entry, delta: float) -> None:
+    if isinstance(entry, dict):
+        entry["duration"] = _get_duration(entry) + delta
+    else:
+        entry.duration = _get_duration(entry) + delta
 
 
 def _deduplicate_transcript(transcript: list) -> list:
@@ -90,9 +101,8 @@ def _deduplicate_transcript(transcript: list) -> list:
 
     deduped = []
 
-    for raw_entry in transcript:
-        entry = _entry_to_dict(raw_entry)
-        text = entry["text"].strip()
+    for entry in transcript:
+        text = _get_text(entry).strip()
         if not text:
             continue
 
@@ -101,7 +111,7 @@ def _deduplicate_transcript(transcript: list) -> list:
             continue
 
         prev = deduped[-1]
-        prev_text = prev["text"].strip()
+        prev_text = _get_text(prev).strip()
 
         # 1. 완전 동일한 경우 건너뜀
         if text == prev_text:
@@ -116,7 +126,7 @@ def _deduplicate_transcript(transcript: list) -> list:
         # 3. 'A B' + 'B' -> 'A B' (접미어 중복)
         if prev_text.endswith(text):
             # 현재 항목을 무시하고 이전 항목의 시간을 연장
-            prev["duration"] += entry["duration"]
+            _add_duration(prev, _get_duration(entry))
             continue
 
         # 4. 'A B' + 'B C' -> 'A B C' (부분 겹침 - 자동자막의 흔한 패턴)
@@ -130,8 +140,8 @@ def _deduplicate_transcript(transcript: list) -> list:
             if prev_words[-i:] == curr_words[:i]:
                 # 겹치는 부분을 제외하고 합침
                 new_text = " ".join(prev_words + curr_words[i:])
-                prev["text"] = new_text
-                prev["duration"] += entry["duration"]
+                _set_text(prev, new_text)
+                _add_duration(prev, _get_duration(entry))
                 overlap_found = True
                 break
         
