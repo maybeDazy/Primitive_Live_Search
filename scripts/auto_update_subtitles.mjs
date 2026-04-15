@@ -53,6 +53,26 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf-8');
 }
 
+function toSubtitleFilepath(filenameOrPath) {
+  const base = String(filenameOrPath || '').replace(/^\.?[\\/]*subtitles[\\/]?/i, '');
+  const normalized = base.replace(/\\/g, '/');
+  return `./subtitles/${normalized}`;
+}
+
+function normalizeSubtitleMappings(mapping) {
+  for (const video of mapping.videos || []) {
+    for (const subtitle of video.subtitles || []) {
+      const source = subtitle.filename || subtitle.filepath || '';
+      subtitle.filepath = toSubtitleFilepath(source);
+    }
+  }
+}
+
+function countSubtitleFiles() {
+  if (!fs.existsSync(SUBTITLES_DIR)) return 0;
+  return fs.readdirSync(SUBTITLES_DIR).filter((name) => /^\d+\.srt$/i.test(name)).length;
+}
+
 function redactSensitiveText(input) {
   return String(input || '').replace(/:\/\/([^:@\s]+):([^@\/\s]+)@/g, '://***:***@');
 }
@@ -329,6 +349,7 @@ function buildKnownVideoKeySet(mapping) {
 
 async function main() {
   const mapping = readJson(MAPPING_PATH);
+  normalizeSubtitleMappings(mapping);
   const knownVideoKeys = buildKnownVideoKeySet(mapping);
 
   const uploadsPlaylistId = await fetchUploadsPlaylistId(CHANNEL_ID);
@@ -373,7 +394,7 @@ async function main() {
           filename,
           language: SUB_LANG,
           language_name: SUB_LANG === 'ko' ? '한국어' : SUB_LANG,
-          filepath: `./subtitles/${filename}`
+          filepath: toSubtitleFilepath(filename)
         }]
       });
 
@@ -395,7 +416,7 @@ async function main() {
 
   mapping.videos.push(...addedEntries);
   mapping.totalVideos = mapping.videos.length;
-  mapping.totalSubtitles = mapping.videos.reduce((sum, video) => sum + (video.subtitles?.length || 0), 0);
+  mapping.totalSubtitles = countSubtitleFiles();
   mapping.updatedAt = new Date().toISOString();
 
   const today = new Date().toISOString().slice(0, 10);
