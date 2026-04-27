@@ -1,7 +1,7 @@
 {
-  "updatedAt": "2026-04-22T19:00:48.952Z",
-  "totalVideos": 424,
-  "totalSubtitles": 425,
+  "updatedAt": "2026-04-27T19:05:17.264Z",
+  "totalVideos": 425,
+  "totalSubtitles": 426,
   "videos": [
     {
       "id": "Ls3ijHllBew",
@@ -5088,6 +5088,18 @@
           "language": "ko",
           "language_name": "한국어",
           "filepath": "./subtitles/428.srt"
+        }
+      ]
+    },
+    {
+      "id": "Z1mUurbFhwg",
+      "title": "4/20 야속한 봄 - 키토제닉/전래식단/재생농업 Q&A",
+      "subtitles": [
+        {
+          "filename": "429.srt",
+          "language": "ko",
+          "language_name": "한국어",
+          "filepath": "./subtitles/429.srt"
         }
       ]
     }
