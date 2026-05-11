@@ -1,7 +1,7 @@
 {
-  "updatedAt": "2026-05-05T19:07:06.554Z",
-  "totalVideos": 426,
-  "totalSubtitles": 427,
+  "updatedAt": "2026-05-11T19:28:33.944Z",
+  "totalVideos": 427,
+  "totalSubtitles": 428,
   "videos": [
     {
       "id": "Ls3ijHllBew",
@@ -5112,6 +5112,18 @@
           "language": "ko",
           "language_name": "한국어",
           "filepath": "./subtitles/430.srt"
+        }
+      ]
+    },
+    {
+      "id": "_km5cYcnm14",
+      "title": "26/5/4 결단을 내려야 할 때!! - 키토제닉/전래식단/재생농업 Q&A",
+      "subtitles": [
+        {
+          "filename": "431.srt",
+          "language": "ko",
+          "language_name": "한국어",
+          "filepath": "./subtitles/431.srt"
         }
       ]
     }
