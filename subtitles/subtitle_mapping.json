@@ -1,7 +1,7 @@
 {
-  "updatedAt": "2026-05-25T19:16:33.939Z",
-  "totalVideos": 429,
-  "totalSubtitles": 430,
+  "updatedAt": "2026-06-01T21:21:56.614Z",
+  "totalVideos": 430,
+  "totalSubtitles": 431,
   "videos": [
     {
       "id": "Ls3ijHllBew",
@@ -5148,6 +5148,18 @@
           "language": "ko",
           "language_name": "한국어",
           "filepath": "./subtitles/433.srt"
+        }
+      ]
+    },
+    {
+      "id": "GcnXFUzptdY",
+      "title": "26/5/25 숲으로 산으로 - 키토제닉/전래식단/재생농업 Q&A",
+      "subtitles": [
+        {
+          "filename": "434.srt",
+          "language": "ko",
+          "language_name": "한국어",
+          "filepath": "./subtitles/434.srt"
         }
       ]
     }
