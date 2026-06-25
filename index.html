@@ -47,6 +47,11 @@
       padding: 0;
       transition: var(--transition);
     }
+
+    :focus-visible {
+      outline: 3px solid rgba(66, 133, 244, 0.55);
+      outline-offset: 3px;
+    }
     
     body {
       font-family: 'Noto Sans KR', sans-serif;
@@ -134,6 +139,18 @@
       display: flex;
       flex-wrap: wrap;
       gap: 12px;
+    }
+
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
     
     .search-input-wrapper {
@@ -368,6 +385,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      text-decoration: none;
       transition: color 0.2s;
     }
     
@@ -514,6 +532,11 @@
       
       .search-form {
         flex-direction: column;
+      }
+
+      .search-input-wrapper {
+        min-width: 0;
+        width: 100%;
       }
       
       .search-btn {
@@ -946,7 +969,7 @@
 <body>
   <div class="container">
     <header>
-      <button id="theme-toggle" class="theme-toggle" aria-label="Toggle dark mode">
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="다크 모드 켜기" aria-pressed="false">
         <i class="fas fa-moon"></i>
       </button>
       <h1>프리미티브 라이브 영상 자막 검색기 <span style="font-size: 0.6em; color: var(--text-secondary);">by 로우</span></h1>
@@ -959,27 +982,28 @@
     </div>
     
     <div class="search-container">
-      <div class="search-tabs">
-        <button class="search-tab active" data-mode="subtitle">
+      <div class="search-tabs" role="tablist" aria-label="검색 모드">
+        <button class="search-tab active" type="button" role="tab" aria-selected="true" data-mode="subtitle">
           <i class="fas fa-closed-captioning"></i> 자막 검색
         </button>
-        <button class="search-tab" data-mode="ai">
+        <button class="search-tab" type="button" role="tab" aria-selected="false" data-mode="ai">
           <i class="fas fa-robot"></i> AI Q&A 검색
         </button>
       </div>
       <div id="ai-disclaimer" style="display: none; font-size: 13px; color: var(--text-secondary); margin-bottom: 15px; padding: 10px; background-color: rgba(66, 133, 244, 0.1); border-radius: var(--radius-sm); border-left: 3px solid var(--secondary-color);">
         <i class="fas fa-info-circle"></i> <b>참고용 안내:</b> AI Q&A 데이터는 자동 추출된 내용으로 실제 영상 내용과 완벽히 일치하지 않거나 부정확할 수 있습니다. 정확한 내용은 영상과 자막을 통해 다시 한번 확인해 주시기 바랍니다.
       </div>
-      <div class="search-form">
+      <form id="search-form" class="search-form" role="search">
         <div class="search-input-wrapper">
+          <label for="search-input" class="visually-hidden">검색어</label>
           <i class="fas fa-search search-icon"></i>
-          <input type="text" id="search-input" class="search-input" placeholder="검색어를 입력하세요">
+          <input type="search" id="search-input" class="search-input" placeholder="검색어를 입력하세요" autocomplete="off" enterkeyhint="search">
         </div>
-        <button id="search-btn" class="search-btn">
+        <button id="search-btn" class="search-btn" type="submit">
           <i class="fas fa-search"></i>
           검색
         </button>
-      </div>
+      </form>
       
       <div class="options">
         <div class="option-group">
@@ -990,15 +1014,15 @@
         </div>
       </div>
       
-      <div id="status" class="status"></div>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
       <div class="progress-container">
-        <div class="progress-bar" id="progress-bar">
+        <div class="progress-bar" id="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <div class="progress" id="progress"></div>
         </div>
       </div>
     </div>
     
-    <div id="results-container" class="results-container">
+    <div id="results-container" class="results-container" aria-live="polite">
       <div id="summary" class="summary"></div>
       <div id="partner-links" class="partner-links"></div>
       <div id="results"></div>
@@ -1106,8 +1130,11 @@
     // 전역 변수 선언
     let mappingData = null;
     let aiDataset = null;
+    let aiDatasetPromise = null;
     let subtitleCache = {}; 
+    let subtitleLoadPromises = {};
     let currentSearchMode = 'subtitle'; 
+    let activeSearchToken = 0;
 
     // IndexedDB 자막 영구 캐시 설정
     const SUBTITLE_DB_NAME = 'primitiveSubtitleCache';
@@ -1248,18 +1275,38 @@
     const youtubeIframeApiReadyPromise = new Promise((resolve) => {
       resolveYouTubeIframeApiReady = resolve;
     });
+
+    const ALLOWED_EXTERNAL_LINK_HOSTS = new Set([
+      'youtube.com',
+      'www.youtube.com',
+      'youtu.be',
+      'link.coupang.com',
+      'www.coupang.com',
+      'kr.iherb.com',
+      'www.meatbox.co.kr',
+      'linktr.ee',
+      'www.meatfriends.co.kr'
+    ]);
     
     // 페이지 로드 완료 시 매핑 데이터 로드 및 초기화
     document.addEventListener('DOMContentLoaded', () => {
       // 다크모드 토글 버튼 설정
       const themeToggle = document.getElementById('theme-toggle');
       const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+
+      function updateThemeToggleState(isDark) {
+        themeToggle.innerHTML = isDark ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
+        themeToggle.setAttribute('aria-pressed', String(isDark));
+        themeToggle.setAttribute('aria-label', isDark ? '다크 모드 끄기' : '다크 모드 켜기');
+      }
       
       // 시스템 테마 또는 저장된 설정 기반으로 초기 테마 설정
       const savedTheme = localStorage.getItem('theme');
       if (savedTheme === 'dark' || (!savedTheme && prefersDarkScheme.matches)) {
         document.body.setAttribute('data-theme', 'dark');
-        themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+        updateThemeToggleState(true);
+      } else {
+        updateThemeToggleState(false);
       }
       
       // 테마 토글 이벤트 리스너
@@ -1267,11 +1314,11 @@
         if (document.body.getAttribute('data-theme') === 'dark') {
           document.body.removeAttribute('data-theme');
           localStorage.setItem('theme', 'light');
-          themeToggle.innerHTML = '<i class="fas fa-moon"></i>';
+          updateThemeToggleState(false);
         } else {
           document.body.setAttribute('data-theme', 'dark');
           localStorage.setItem('theme', 'dark');
-          themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+          updateThemeToggleState(true);
         }
       });
       
@@ -1279,8 +1326,12 @@
       const tabs = document.querySelectorAll('.search-tab');
       tabs.forEach(tab => {
         tab.addEventListener('click', () => {
-          tabs.forEach(t => t.classList.remove('active'));
+          tabs.forEach(t => {
+            t.classList.remove('active');
+            t.setAttribute('aria-selected', 'false');
+          });
           tab.classList.add('active');
+          tab.setAttribute('aria-selected', 'true');
           currentSearchMode = tab.dataset.mode;
           
           const languageFilter = document.getElementById('language-filter').closest('.option-group');
@@ -1289,6 +1340,9 @@
             languageFilter.style.display = 'none';
             aiDisclaimer.style.display = 'block';
             document.getElementById('search-input').placeholder = 'AI가 추출한 문답에서 검색하세요';
+            loadAIDataset().catch((error) => {
+              console.warn('AI Q&A 데이터 사전 로드 실패:', error);
+            });
           } else {
             languageFilter.style.display = 'flex';
             aiDisclaimer.style.display = 'none';
@@ -1314,16 +1368,10 @@
         }
       }, 5000); // 5초 후 페이드 아웃 시작
       
-      // 검색 버튼 클릭 이벤트 리스너
-      document.getElementById('search-btn').addEventListener('click', () => {
+      // 검색 폼 제출 이벤트 리스너
+      document.getElementById('search-form').addEventListener('submit', (event) => {
+        event.preventDefault();
         performSearch();
-      });
-      
-      // 엔터 키 이벤트 리스너
-      document.getElementById('search-input').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-          performSearch();
-        }
       });
 
       document.getElementById('inline-player-close').addEventListener('click', () => {
@@ -1537,12 +1585,59 @@
         .replace(/'/g, '&#39;');
     }
 
+    function sanitizeExternalUrl(url, fallback = '#') {
+      try {
+        const parsedUrl = new URL(String(url || ''), window.location.origin);
+        if (parsedUrl.protocol !== 'https:') return fallback;
+        if (!ALLOWED_EXTERNAL_LINK_HOSTS.has(parsedUrl.hostname)) return fallback;
+        return parsedUrl.href;
+      } catch {
+        return fallback;
+      }
+    }
+
+    function sanitizeYouTubeVideoId(videoId) {
+      const candidate = String(videoId || '').trim();
+      return /^[0-9A-Za-z_-]{6,32}$/.test(candidate) ? candidate : '';
+    }
+
+    function setStatus(message, iconClass = '') {
+      const statusElement = document.getElementById('status');
+      if (!statusElement) return;
+
+      statusElement.textContent = '';
+      if (!iconClass) {
+        statusElement.textContent = message;
+        return;
+      }
+
+      const icon = document.createElement('i');
+      icon.className = iconClass;
+      icon.setAttribute('aria-hidden', 'true');
+      statusElement.appendChild(icon);
+      statusElement.appendChild(document.createTextNode(` ${message}`));
+    }
+
+    function setProgressValue(value) {
+      const progressBar = document.getElementById('progress-bar');
+      const progress = document.getElementById('progress');
+      const safeValue = Math.max(0, Math.min(100, Number(value) || 0));
+
+      if (progress) {
+        progress.style.width = `${safeValue}%`;
+      }
+
+      if (progressBar) {
+        progressBar.setAttribute('aria-valuenow', String(Math.round(safeValue)));
+      }
+    }
+
     function escapeRegExp(text) {
       return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
     function buildCoupangSearchUrl(keyword) {
-      return `https://www.coupang.com/np/search?component=&q=${encodeURIComponent(keyword)}&channel=user`;
+      return sanitizeExternalUrl(`https://www.coupang.com/np/search?component=&q=${encodeURIComponent(keyword)}&channel=user`);
     }
 
     function isPartnerKeywordActive(item, keyword) {
@@ -1559,7 +1654,7 @@
 
       partnerKeywordEntriesCache = PARTNER_LINK_ITEMS
         .flatMap(item => {
-          const url = item.partnersUrl || buildCoupangSearchUrl(item.query);
+          const url = sanitizeExternalUrl(item.partnersUrl || buildCoupangSearchUrl(item.query));
           const keywords = Array.from(new Set([item.label, item.query, ...(item.aliases || [])].filter(Boolean)));
           return keywords.map(keyword => ({ keyword, url }));
         })
@@ -1656,7 +1751,7 @@
         html += highlightSearchKeyword(sourceText.slice(lastIndex, match.startIndex), keyword);
 
         const linkedText = highlightSearchKeyword(sourceText.slice(match.startIndex, match.endIndex), keyword);
-        html += `<a href="${escapeHtml(match.url)}" target="_blank" rel="noopener noreferrer sponsored" class="partner-inline-link">${linkedText}</a>`;
+        html += `<a href="${escapeHtml(sanitizeExternalUrl(match.url))}" target="_blank" rel="noopener noreferrer sponsored" class="partner-inline-link">${linkedText}</a>`;
 
         lastIndex = match.endIndex;
       });
@@ -1681,8 +1776,10 @@
     };
 
     function buildYouTubeWatchUrl(videoId, startSeconds = 0) {
+      const safeVideoId = sanitizeYouTubeVideoId(videoId);
       const safeSeconds = Math.max(0, Number.parseInt(startSeconds || '0', 10) || 0);
-      return `https://youtube.com/watch?v=${videoId}&t=${safeSeconds}`;
+      if (!safeVideoId) return 'https://youtube.com';
+      return `https://youtube.com/watch?v=${safeVideoId}&t=${safeSeconds}`;
     }
 
     function formatPlaybackSeconds(seconds) {
@@ -1824,17 +1921,18 @@
     }
 
     async function playInlineVideo(videoId, startSeconds = 0, videoTitle = '') {
-      if (!videoId) return;
+      const safeVideoId = sanitizeYouTubeVideoId(videoId);
+      if (!safeVideoId) return;
 
       const safeSeconds = Math.max(0, Number.parseInt(startSeconds || '0', 10) || 0);
       pendingInlinePlayback = {
-        videoId,
+        videoId: safeVideoId,
         startSeconds: safeSeconds,
         videoTitle
       };
 
       showInlinePlayerPanel();
-      setInlinePlayerMeta(videoId, safeSeconds, videoTitle);
+      setInlinePlayerMeta(safeVideoId, safeSeconds, videoTitle);
       setInlinePlayerStatus('플레이어를 준비하는 중...');
 
       try {
@@ -1842,7 +1940,7 @@
 
         if (!youtubeInlinePlayer) {
           youtubeInlinePlayer = new YTApi.Player('inline-player-frame', {
-            videoId,
+            videoId: safeVideoId,
             playerVars: {
               autoplay: 1,
               playsinline: 1,
@@ -1859,14 +1957,14 @@
         }
 
         youtubeInlinePlayer.loadVideoById({
-          videoId,
+          videoId: safeVideoId,
           startSeconds: safeSeconds
         });
         setInlinePlayerStatus(`페이지에서 ${formatPlaybackSeconds(safeSeconds)}부터 재생 중...`);
       } catch (error) {
         console.error('YouTube IFrame API 로드 실패:', error);
         setInlinePlayerStatus('플레이어 로드에 실패해 새 탭에서 엽니다.');
-        window.open(buildYouTubeWatchUrl(videoId, safeSeconds), '_blank', 'noopener,noreferrer');
+        window.open(buildYouTubeWatchUrl(safeVideoId, safeSeconds), '_blank', 'noopener,noreferrer');
       }
     }
 
@@ -1945,7 +2043,7 @@
 
       if (matchTimeLink) {
         matchTimeLink.href = buildYouTubeWatchUrl(videoId, startSeconds);
-        matchTimeLink.innerHTML = `<i class="fas fa-play"></i> ${startTime}`;
+        matchTimeLink.innerHTML = `<i class="fas fa-play"></i> ${escapeHtml(startTime)}`;
       }
 
       const inlinePlayButton = matchElement.querySelector('.inline-play-btn');
@@ -1979,12 +2077,12 @@
         surroundingHTML += `
           <div
             class="surrounding-subtitle-item ${isCurrent ? 'current' : ''}"
-            data-filepath="${filepath}"
+            data-filepath="${escapeHtml(filepath)}"
             data-center-index="${i}"
             title="이 자막을 기준으로 다시 보기"
             style="animation-delay: ${(i - startIndex) * 0.03}s"
           >
-            <span>${startTime}</span> ${formattedText}
+            <span>${escapeHtml(startTime)}</span> ${formattedText}
           </div>
         `;
       }
@@ -2010,17 +2108,17 @@
       const linkItems = PARTNER_LINK_ITEMS.map(item => ({
         ...item,
         isActive: isPartnerKeywordActive(item, keyword),
-        url: item.partnersUrl || buildCoupangSearchUrl(item.query)
+        url: sanitizeExternalUrl(item.partnersUrl || buildCoupangSearchUrl(item.query))
       }));
 
       const linksHTML = linkItems.map(item => `
         <a
-          href="${item.url}"
+          href="${escapeHtml(item.url)}"
           target="_blank"
           rel="noopener noreferrer sponsored"
           class="partner-link-anchor${item.isActive ? ' active' : ''}"
         >
-          ${item.label}
+          ${escapeHtml(item.label)}
         </a>
       `).join('');
 
@@ -2152,28 +2250,20 @@
       statusElement.classList.add('loading');
 
       try {
-        // 병렬로 데이터 로드
-        const [mappingRes, aiRes] = await Promise.all([
-          fetch(`./subtitles/subtitle_mapping.json?t=${Date.now()}`, { cache: 'no-store' }),
-          fetch('./refined_dataset.json')
-        ]);
+        const mappingRes = await fetch(`./subtitles/subtitle_mapping.json?t=${Date.now()}`, { cache: 'no-store' });
 
         if (mappingRes.ok) {
           mappingData = await mappingRes.json();
           updateLanguageOptions();
         }
 
-        if (aiRes.ok) {
-          aiDataset = await aiRes.json();
-        }
-
         statusElement.classList.remove('loading');
         
         let statusMsg = '';
-        if (mappingData) statusMsg += `${mappingData.totalVideos}개 비디오 준비 완료. `;
-        if (aiDataset) statusMsg += `AI Q&A 데이터 ${aiDataset.length}개 준비 완료.`;
+        if (mappingData) statusMsg += `${Number(mappingData.totalVideos) || 0}개 비디오 준비 완료. `;
+        statusMsg += 'AI Q&A 데이터는 AI 검색 시 불러옵니다.';
         
-        statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${statusMsg}`;
+        statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${escapeHtml(statusMsg)}`;
         
         // 자막 파일 미리 로딩 시작
         if (mappingData) preloadAllSubtitles();
@@ -2185,10 +2275,31 @@
             <i class="fas fa-exclamation-circle"></i>
             <div>
               데이터를 로드할 수 없습니다.
-              <br><small>Error: ${error.message}</small>
+              <br><small>페이지를 새로고침한 뒤 다시 시도하세요.</small>
             </div>
           </div>`;
       }
+    }
+
+    async function loadAIDataset() {
+      if (aiDataset) return aiDataset;
+      if (aiDatasetPromise) return aiDatasetPromise;
+
+      aiDatasetPromise = fetch('./refined_dataset.json')
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error(`AI dataset load failed: ${response.status}`);
+          }
+
+          aiDataset = await response.json();
+          return aiDataset;
+        })
+        .catch((error) => {
+          aiDatasetPromise = null;
+          throw error;
+        });
+
+      return aiDatasetPromise;
     }
     
     // 모든 자막 파일 미리 로딩 함수 (ZIP 압축 해제 지원)
@@ -2197,11 +2308,10 @@
       
       const statusElement = document.getElementById('status');
       const progressBar = document.getElementById('progress-bar');
-      const progress = document.getElementById('progress');
       
       statusElement.innerHTML = '<i class="fas fa-database"></i> 저장된 자막 캐시를 확인 중...';
       progressBar.style.display = 'block';
-      progress.style.width = '0%';
+      setProgressValue(0);
 
       const mappedSubtitlePathSet = new Set();
       mappingData.videos.forEach((video) => {
@@ -2221,10 +2331,9 @@
 
         if (filteredPersistedCache && Object.keys(filteredPersistedCache).length === mappedSubtitlePathSet.size) {
           subtitleCache = filteredPersistedCache;
-          progress.style.width = '100%';
+          setProgressValue(100);
           progressBar.style.display = 'none';
           statusElement.innerHTML = `<i class="fas fa-bolt"></i> 캐시에서 자막 ${Object.keys(filteredPersistedCache).length}개를 즉시 로드했습니다.`;
-          console.log(`IndexedDB cache hit: ${Object.keys(filteredPersistedCache).length} files loaded.`);
 
           if (persistedCache && Object.keys(filteredPersistedCache).length !== Object.keys(persistedCache).length) {
             try {
@@ -2246,7 +2355,7 @@
       }
 
       statusElement.innerHTML = '<i class="fas fa-download"></i> 자막 압축 파일을 불러옵니다...';
-      progress.style.width = '0%';
+      setProgressValue(0);
 
       try {
         const response = await fetch(buildVersionedSubtitleUrl('subtitles.zip'), { cache: 'no-store' });
@@ -2274,7 +2383,7 @@
             
             loadedCount++;
             const percentage = (loadedCount / files.length) * 100;
-            progress.style.width = `${percentage}%`;
+            setProgressValue(percentage);
             statusElement.innerHTML = `<i class="fas fa-file-archive"></i> 압축 해제 중... (${loadedCount}/${files.length})`;
           }
           
@@ -2285,7 +2394,7 @@
           }
 
           progressBar.style.display = 'none';
-          statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${mappingData.totalVideos}개 비디오, 압축 파일 로드 완료.`;
+          statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${Number(mappingData.totalVideos) || 0}개 비디오, 압축 파일 로드 완료.`;
           return; // 성공 시 종료
         }
       } catch (error) {
@@ -2311,7 +2420,7 @@
             loadedCount++;
             
             const percentage = (loadedCount / allSubtitlePaths.length) * 100;
-            progress.style.width = `${percentage}%`;
+            setProgressValue(percentage);
             statusElement.innerHTML = `<i class="fas fa-download"></i> 자막파일을 불러옵니다... (${loadedCount}/${allSubtitlePaths.length})`;
           } catch (error) {
             console.warn(`자막 파일 미리 로딩 실패: ${filepath}`, error);
@@ -2352,6 +2461,11 @@
 
       const sortedLangs = Array.from(languageSet).sort();
 
+      const allOption = document.createElement('option');
+      allOption.value = 'all';
+      allOption.textContent = '전체 언어';
+      languageFilter.appendChild(allOption);
+
       // 언어 옵션 추가
       sortedLangs.forEach(lang => {
         const option = document.createElement('option');
@@ -2363,11 +2477,10 @@
       // 선택 상태 복원 또는 첫 번째 언어 선택
       if (sortedLangs.length > 0) {
         // currentLangValue가 sortedLangs 안에 있는지 확인하고 설정
-        if (currentLangValue && sortedLangs.includes(currentLangValue)) {
+        if (currentLangValue === 'all' || (currentLangValue && sortedLangs.includes(currentLangValue))) {
           languageFilter.value = currentLangValue;
         } else {
-          // 기존 선택값이 없거나 유효하지 않으면 첫 번째 언어를 기본값으로 설정
-          languageFilter.value = sortedLangs[0];
+          languageFilter.value = 'all';
         }
       } else {
          // 사용 가능한 언어가 없을 경우 처리
@@ -2398,24 +2511,30 @@
     
     // 검색 실행 함수
     async function performSearch() {
+      const searchToken = ++activeSearchToken;
       const searchInput = document.getElementById('search-input');
+      const searchButton = document.getElementById('search-btn');
       const keyword = searchInput.value.trim();
       
-      console.log('현재 캐시 상태:', Object.keys(subtitleCache).length, '개 파일 로드됨');
-      console.log('캐시 키 샘플:', Object.keys(subtitleCache).slice(0, 5));
-      
       if (!keyword) {
-        alert('검색어를 입력하세요.');
+        setStatus('검색어를 입력하세요.', 'fas fa-info-circle');
+        searchInput.focus();
         return;
       }
 
+      searchButton.disabled = true;
+
       if (currentSearchMode === 'ai') {
-        performAISearch(keyword);
+        await performAISearch(keyword, searchToken);
+        if (searchToken === activeSearchToken) {
+          searchButton.disabled = false;
+        }
         return;
       }
       
       if (!mappingData) {
-        alert('매핑 데이터가 로드되지 않았습니다. 페이지를 새로고침 후 다시 시도하세요.');
+        setStatus('매핑 데이터가 로드되지 않았습니다. 페이지를 새로고침 후 다시 시도하세요.', 'fas fa-exclamation-circle');
+        searchButton.disabled = false;
         return;
       }
 
@@ -2431,15 +2550,15 @@
       // UI 초기화
       const statusElement = document.getElementById('status');
       const progressBar = document.getElementById('progress-bar');
-      const progress = document.getElementById('progress');
       const resultsContainer = document.getElementById('results-container');
       const summary = document.getElementById('summary');
       const resultsElement = document.getElementById('results');
       
-      statusElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 검색 중...';
+      setStatus('검색 중...', 'fas fa-spinner fa-spin');
       progressBar.style.display = 'block';
-      progress.style.width = '0%';
+      setProgressValue(0);
       resultsContainer.style.display = 'none';
+      resultsContainer.setAttribute('aria-busy', 'true');
       
       // 검색 결과 저장 변수
       const searchResults = [];
@@ -2462,77 +2581,105 @@
       // 진행 상황 업데이트 함수
       let processedCount = 0;
       function updateProgress() {
+        if (searchToken !== activeSearchToken) return;
         processedCount++;
         const percentage = (processedCount / subtitleFiles.length) * 100;
-        progress.style.width = `${percentage}%`;
-        statusElement.innerHTML = `<i class="fas fa-spinner fa-spin"></i> 검색 중... (${processedCount}/${subtitleFiles.length})`;
+        setProgressValue(percentage);
+        setStatus(`검색 중... (${processedCount}/${subtitleFiles.length})`, 'fas fa-spinner fa-spin');
       }
       
-      // 병렬 처리를 위한 배치 크기
-      const BATCH_SIZE = 10;
-      
-      // 배치 단위로 처리
-      for (let i = 0; i < subtitleFiles.length; i += BATCH_SIZE) {
-        const batch = subtitleFiles.slice(i, i + BATCH_SIZE);
+      try {
+        // 병렬 처리를 위한 배치 크기
+        const BATCH_SIZE = 10;
         
-        // 병렬 처리
-        await Promise.all(batch.map(async file => {
-          // SRT 파일 로드 및 검색
-          const matches = await searchInSubtitle(file, keyword);
+        // 배치 단위로 처리
+        for (let i = 0; i < subtitleFiles.length; i += BATCH_SIZE) {
+          const batch = subtitleFiles.slice(i, i + BATCH_SIZE);
           
-          if (matches.length > 0) {
-            const rankedMatches = rankSubtitleMatches(matches, keyword);
-            searchResults.push({
-              videoId: file.videoId,
-              videoTitle: file.videoTitle,
-              subtitle: file.subtitle,
-              matches: rankedMatches,
-              relevanceScore: computeResultRelevanceScore(rankedMatches)
-            });
-          }
-          
-          updateProgress();
-        }));
-      }
-      
-      // 검색 완료 후 UI 업데이트
-      statusElement.innerHTML = '<i class="fas fa-check-circle"></i> 검색 완료';
-      progressBar.style.display = 'none';
-      resultsContainer.style.display = 'block';
+          // 병렬 처리
+          await Promise.all(batch.map(async file => {
+            if (searchToken !== activeSearchToken) return;
 
-      searchResults.sort((a, b) =>
-        (b.relevanceScore || 0) - (a.relevanceScore || 0) ||
-        b.matches.length - a.matches.length ||
-        a.videoTitle.localeCompare(b.videoTitle, 'ko')
-      );
-      
-      // 결과 표시
-      displayResults(searchResults, keyword);
+            // SRT 파일 로드 및 검색
+            const matches = await searchInSubtitle(file, keyword);
+            if (searchToken !== activeSearchToken) return;
+            
+            if (matches.length > 0) {
+              const rankedMatches = rankSubtitleMatches(matches, keyword);
+              searchResults.push({
+                videoId: file.videoId,
+                videoTitle: file.videoTitle,
+                subtitle: file.subtitle,
+                matches: rankedMatches,
+                relevanceScore: computeResultRelevanceScore(rankedMatches)
+              });
+            }
+            
+            updateProgress();
+          }));
+
+          if (searchToken !== activeSearchToken) return;
+        }
+        
+        if (searchToken !== activeSearchToken) return;
+        setStatus('검색 완료', 'fas fa-check-circle');
+
+        searchResults.sort((a, b) =>
+          (b.relevanceScore || 0) - (a.relevanceScore || 0) ||
+          b.matches.length - a.matches.length ||
+          a.videoTitle.localeCompare(b.videoTitle, 'ko')
+        );
+        
+        resultsContainer.style.display = 'block';
+        displayResults(searchResults, keyword);
+      } catch (error) {
+        console.error('검색 실패:', error);
+        if (searchToken === activeSearchToken) {
+          setStatus('검색 중 오류가 발생했습니다. 잠시 후 다시 시도하세요.', 'fas fa-exclamation-circle');
+        }
+      } finally {
+        if (searchToken === activeSearchToken) {
+          progressBar.style.display = 'none';
+          resultsContainer.setAttribute('aria-busy', 'false');
+          searchButton.disabled = false;
+        }
+      }
     }
 
     // AI Q&A 검색 실행 함수
-    function performAISearch(keyword) {
-      if (!aiDataset) {
-        alert('AI Q&A 데이터가 로드되지 않았습니다.');
+    async function performAISearch(keyword, searchToken = activeSearchToken) {
+      const resultsContainer = document.getElementById('results-container');
+
+      setStatus('AI Q&A 데이터를 불러오는 중...', 'fas fa-spinner fa-spin');
+      resultsContainer.style.display = 'none';
+      resultsContainer.setAttribute('aria-busy', 'true');
+
+      try {
+        await loadAIDataset();
+      } catch (error) {
+        console.error('AI Q&A 데이터 로드 실패:', error);
+        if (searchToken === activeSearchToken) {
+          setStatus('AI Q&A 데이터를 로드할 수 없습니다. 잠시 후 다시 시도하세요.', 'fas fa-exclamation-circle');
+          resultsContainer.setAttribute('aria-busy', 'false');
+        }
         return;
       }
 
-      const statusElement = document.getElementById('status');
-      const resultsContainer = document.getElementById('results-container');
-      const resultsElement = document.getElementById('results');
-      const summary = document.getElementById('summary');
+      if (searchToken !== activeSearchToken) return;
 
-      statusElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> AI Q&A 검색 중...';
-      resultsContainer.style.display = 'none';
+      setStatus('AI Q&A 검색 중...', 'fas fa-spinner fa-spin');
 
       const searchKeywordLower = keyword.toLowerCase().replace(/\s+/g, '');
       const results = aiDataset.filter(item => {
-        return item.question.toLowerCase().replace(/\s+/g, '').includes(searchKeywordLower) ||
-               item.answer.toLowerCase().replace(/\s+/g, '').includes(searchKeywordLower);
+        return String(item.question || '').toLowerCase().replace(/\s+/g, '').includes(searchKeywordLower) ||
+               String(item.answer || '').toLowerCase().replace(/\s+/g, '').includes(searchKeywordLower);
       });
 
-      statusElement.innerHTML = '<i class="fas fa-check-circle"></i> 검색 완료';
+      if (searchToken !== activeSearchToken) return;
+
+      setStatus('검색 완료', 'fas fa-check-circle');
       resultsContainer.style.display = 'block';
+      resultsContainer.setAttribute('aria-busy', 'false');
       displayAIResults(results, keyword);
     }
 
@@ -2548,7 +2695,7 @@
         resultsElement.innerHTML = `
           <div class="no-results">
             <i class="fas fa-search"></i>
-            <p>"${keyword}" 에 대한 Q&A 검색 결과가 없습니다.<br>다른 검색어로 다시 시도해보세요.</p>
+            <p>"${escapeHtml(keyword)}" 에 대한 Q&A 검색 결과가 없습니다.<br>다른 검색어로 다시 시도해보세요.</p>
           </div>`;
         return;
       }
@@ -2559,6 +2706,9 @@
       results.forEach((item, index) => {
         const highlightedQuestion = highlightSearchKeyword(item.question, keyword);
         const highlightedAnswer = highlightSearchKeyword(item.answer, keyword);
+        const sourceTitle = escapeHtml(item.source?.video_title || '');
+        const sourceTimestamp = escapeHtml(item.source?.timestamp || '');
+        const sourceUrl = sanitizeExternalUrl(item.source?.url);
 
         html += `
           <div class="qa-result-item" style="animation-delay: ${index * 0.05}s">
@@ -2572,10 +2722,10 @@
             <div class="qa-source">
               <div class="video-meta-item">
                 <i class="fab fa-youtube"></i>
-                ${item.source.video_title}
+                ${sourceTitle}
               </div>
-              <a href="${item.source.url}" target="_blank" class="qa-source-link">
-                <i class="fas fa-external-link-alt"></i> 영상 이동 (${item.source.timestamp})
+              <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="qa-source-link">
+                <i class="fas fa-external-link-alt"></i> 영상 이동 (${sourceTimestamp})
               </a>
             </div>
           </div>
@@ -2728,7 +2878,7 @@
         resultsElement.innerHTML = `
           <div class="no-results">
             <i class="fas fa-search"></i>
-            <p>"${keyword}" 에 대한 검색 결과가 없습니다.<br>다른 검색어로 다시 시도해보세요.</p>
+            <p>"${escapeHtml(keyword)}" 에 대한 검색 결과가 없습니다.<br>다른 검색어로 다시 시도해보세요.</p>
           </div>`;
         return;
       }
@@ -2758,21 +2908,26 @@
       batch.forEach((result, batchVideoIndex) => {
         const videoIndex = startIndex + batchVideoIndex;
         const displayFilepath = normalizeSubtitlePath(result.subtitle.filepath);
+        const safeVideoId = sanitizeYouTubeVideoId(result.videoId);
+        const escapedVideoId = escapeHtml(safeVideoId || result.videoId || '');
+        const escapedVideoTitle = escapeHtml(result.videoTitle || '');
+        const videoUrl = buildYouTubeWatchUrl(safeVideoId, 0);
+        const escapedLanguageName = escapeHtml(getLanguageName(result.subtitle.language));
         
         batchHTML += `
           <div class="result-group" style="animation-delay: ${(batchVideoIndex % RESULTS_PER_PAGE) * 0.1}s">
-            <div class="video-title" onclick="window.open('https://youtube.com/watch?v=${result.videoId}', '_blank')">
+            <a class="video-title" href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener noreferrer">
               <i class="fab fa-youtube"></i>
-              ${result.videoTitle}
-            </div>
+              ${escapedVideoTitle}
+            </a>
             <div class="video-meta">
               <div class="video-meta-item">
                 <i class="fas fa-fingerprint"></i>
-                ${result.videoId}
+                ${escapedVideoId}
               </div>
               <div class="video-meta-item">
                 <i class="fas fa-language"></i>
-                ${getLanguageName(result.subtitle.language)}
+                ${escapedLanguageName}
               </div>
               <div class="video-meta-item">
                 <i class="fas fa-closed-captioning"></i>
@@ -2786,13 +2941,14 @@
           const formattedText = formatSubtitleText(match.text, currentKeyword);
           const timeStart = match.time.split(' --> ')[0];
           const seconds = convertTimeToSeconds(timeStart);
+          const escapedTimeStart = escapeHtml(timeStart);
 
           batchHTML += `
             <li
               class="subtitle-match"
-              data-video-id="${result.videoId}"
-              data-video-title="${escapeHtml(result.videoTitle)}"
-              data-filepath="${displayFilepath}"
+              data-video-id="${escapeHtml(safeVideoId)}"
+              data-video-title="${escapedVideoTitle}"
+              data-filepath="${escapeHtml(displayFilepath)}"
               data-current-index="${match.arrayIndex}"
               style="animation-delay: ${(batchVideoIndex % RESULTS_PER_PAGE) * 0.1 + matchIndex * 0.05}s"
             >
@@ -2800,19 +2956,19 @@
               <div class="match-controls">
                 <button
                   class="inline-play-btn"
-                  data-video-id="${result.videoId}"
+                  data-video-id="${escapeHtml(safeVideoId)}"
                   data-start-seconds="${Math.floor(seconds)}"
-                  data-video-title="${escapeHtml(result.videoTitle)}"
+                  data-video-title="${escapedVideoTitle}"
                 >
                   <i class="fas fa-play-circle"></i>
                   이 페이지 재생
                 </button>
-                <a href="https://youtube.com/watch?v=${result.videoId}&t=${Math.floor(seconds)}" target="_blank" class="match-time">
+                <a href="${escapeHtml(buildYouTubeWatchUrl(safeVideoId, Math.floor(seconds)))}" target="_blank" rel="noopener noreferrer" class="match-time">
                   <i class="fas fa-play"></i>
-                  ${timeStart}
+                  ${escapedTimeStart}
                 </a>
                 <button class="load-more-btn"
-                        data-filepath="${displayFilepath}"
+                        data-filepath="${escapeHtml(displayFilepath)}"
                         data-match-index="${match.arrayIndex}">
                   <i class="fas fa-ellipsis-h"></i> 자막 더 보기
                 </button>
@@ -2925,13 +3081,15 @@
 
         // 1. 메모리 캐시 확인
         if (subtitleCache[normalizedPath]) {
-            // console.log(`Memory cache hit for: ${filepath}`);
             return subtitleCache[normalizedPath];
         }
 
+        if (subtitleLoadPromises[normalizedPath]) {
+            return subtitleLoadPromises[normalizedPath];
+        }
+
         // 2. 캐시 없으면 파일 로드 및 파싱
-        try {
-            // console.log(`Memory cache miss for: ${filepath}. Fetching...`);
+        subtitleLoadPromises[normalizedPath] = (async () => {
             const response = await fetch(buildVersionedSubtitleUrl(normalizedPath), { cache: 'no-store' });
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -2943,9 +3101,15 @@
             subtitleCache[normalizedPath] = subtitles;
 
             return subtitles;
+        })();
+
+        try {
+            return await subtitleLoadPromises[normalizedPath];
         } catch (error) {
             console.error(`파일 로드 또는 파싱 실패: ${normalizedPath}`, error);
             return null; // 실패 시 null 반환
+        } finally {
+            delete subtitleLoadPromises[normalizedPath];
         }
     }
   </script>
