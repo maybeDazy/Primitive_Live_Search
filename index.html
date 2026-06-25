@@ -6,7 +6,6 @@
   <title>YouTube 자막 검색기</title>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
     :root {
       --primary-color: #ff0000;
@@ -45,7 +44,15 @@
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      transition: var(--transition);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
     }
 
     :focus-visible {
@@ -1053,12 +1060,16 @@
   </div>
 
   <!-- 업데이트 로그 -->
-    <div id="update-log" class="update-log">
+  <div id="update-log" class="update-log">
     <div class="update-log-header">
       <i class="fas fa-bell"></i>
       업데이트
     </div>
     <div class="update-log-content">
+      <div class="update-item">
+        <span class="update-date">2026-06-25</span>
+        검색 보안, 접근성, AI 데이터 로딩 및 자막 캐시 로딩 방식을 개선하였습니다
+      </div>
       <div class="update-item">
         <span class="update-date">2026-06-09</span>
         프리미티브님 유튜브 영상 자막 1개를 추가하였습니다
@@ -1135,6 +1146,10 @@
     let subtitleLoadPromises = {};
     let currentSearchMode = 'subtitle'; 
     let activeSearchToken = 0;
+    let lastLiveStatusAt = 0;
+    let pendingStatusTimer = null;
+    let pendingStatusMessage = null;
+    let pendingStatusIconClass = '';
 
     // IndexedDB 자막 영구 캐시 설정
     const SUBTITLE_DB_NAME = 'primitiveSubtitleCache';
@@ -1326,6 +1341,7 @@
       const tabs = document.querySelectorAll('.search-tab');
       tabs.forEach(tab => {
         tab.addEventListener('click', () => {
+          cancelActiveSearchForModeChange();
           tabs.forEach(t => {
             t.classList.remove('active');
             t.setAttribute('aria-selected', 'false');
@@ -1426,6 +1442,11 @@
         normalizedPath = `subtitles/${normalizedPath.replace(/^subtitles\//, '')}`;
       }
 
+      if (!/^subtitles\/[0-9A-Za-z._-]+\.(srt|vtt|zip)$/i.test(normalizedPath)) {
+        console.warn(`허용되지 않는 자막 경로를 무시합니다: ${filepath}`);
+        return '';
+      }
+
       return `./${normalizedPath}`;
     }
 
@@ -1437,6 +1458,7 @@
       const normalizedPath = normalizeSubtitlePath(filepath);
       const version = getSubtitleDataVersion();
 
+      if (!normalizedPath) return '';
       if (!version) return normalizedPath;
 
       return `${normalizedPath}?v=${encodeURIComponent(version)}`;
@@ -1585,6 +1607,50 @@
         .replace(/'/g, '&#39;');
     }
 
+    function decodeHtmlEntities(text) {
+      const source = String(text || '');
+      const namedEntities = {
+        amp: '&',
+        lt: '<',
+        gt: '>',
+        quot: '"',
+        apos: "'",
+        nbsp: ' '
+      };
+      const decodeCodePoint = (codePoint, fallback) => {
+        if (!Number.isFinite(codePoint) || codePoint < 0 || codePoint > 0x10FFFF) {
+          return fallback;
+        }
+
+        try {
+          return String.fromCodePoint(codePoint);
+        } catch {
+          return fallback;
+        }
+      };
+
+      return source.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (entity, body) => {
+        const key = body.toLowerCase();
+        if (key in namedEntities) return namedEntities[key];
+
+        if (key.startsWith('#x')) {
+          const codePoint = Number.parseInt(key.slice(2), 16);
+          return decodeCodePoint(codePoint, entity);
+        }
+
+        if (key.startsWith('#')) {
+          const codePoint = Number.parseInt(key.slice(1), 10);
+          return decodeCodePoint(codePoint, entity);
+        }
+
+        return entity;
+      });
+    }
+
+    function normalizeDisplayText(text) {
+      return decodeHtmlEntities(text).replace(/\s+/g, ' ').trim();
+    }
+
     function sanitizeExternalUrl(url, fallback = '#') {
       try {
         const parsedUrl = new URL(String(url || ''), window.location.origin);
@@ -1601,7 +1667,7 @@
       return /^[0-9A-Za-z_-]{6,32}$/.test(candidate) ? candidate : '';
     }
 
-    function setStatus(message, iconClass = '') {
+    function applyStatus(message, iconClass = '') {
       const statusElement = document.getElementById('status');
       if (!statusElement) return;
 
@@ -1616,6 +1682,45 @@
       icon.setAttribute('aria-hidden', 'true');
       statusElement.appendChild(icon);
       statusElement.appendChild(document.createTextNode(` ${message}`));
+    }
+
+    function setStatus(message, iconClass = '', options = {}) {
+      const throttleMs = Number(options.throttleMs) || 0;
+
+      if (!throttleMs) {
+        if (pendingStatusTimer) {
+          clearTimeout(pendingStatusTimer);
+          pendingStatusTimer = null;
+          pendingStatusMessage = null;
+          pendingStatusIconClass = '';
+        }
+        lastLiveStatusAt = Date.now();
+        applyStatus(message, iconClass);
+        return;
+      }
+
+      const now = Date.now();
+      const elapsed = now - lastLiveStatusAt;
+      if (elapsed >= throttleMs) {
+        lastLiveStatusAt = now;
+        applyStatus(message, iconClass);
+        return;
+      }
+
+      pendingStatusMessage = message;
+      pendingStatusIconClass = iconClass;
+
+      if (pendingStatusTimer) return;
+
+      pendingStatusTimer = setTimeout(() => {
+        pendingStatusTimer = null;
+        const nextMessage = pendingStatusMessage;
+        const nextIconClass = pendingStatusIconClass;
+        pendingStatusMessage = null;
+        pendingStatusIconClass = '';
+        lastLiveStatusAt = Date.now();
+        applyStatus(nextMessage, nextIconClass);
+      }, throttleMs - elapsed);
     }
 
     function setProgressValue(value) {
@@ -1806,10 +1911,11 @@
       const titleElement = document.getElementById('inline-player-title');
       const linkElement = document.getElementById('inline-player-link');
       const timeLabel = formatPlaybackSeconds(startSeconds);
+      const displayTitle = normalizeDisplayText(videoTitle);
 
       if (titleElement) {
-        titleElement.textContent = videoTitle
-          ? `${videoTitle} · ${timeLabel}부터 재생`
+        titleElement.textContent = displayTitle
+          ? `${displayTitle} · ${timeLabel}부터 재생`
           : `${timeLabel}부터 재생`;
       }
 
@@ -2128,6 +2234,23 @@
       `;
     }
 
+    function getMappedSubtitlePathSet() {
+      const mappedSubtitlePathSet = new Set();
+
+      if (!mappingData?.videos) return mappedSubtitlePathSet;
+
+      mappingData.videos.forEach((video) => {
+        video.subtitles.forEach((subtitle) => {
+          const normalizedPath = normalizeSubtitlePath(subtitle.filepath);
+          if (normalizedPath) {
+            mappedSubtitlePathSet.add(normalizedPath);
+          }
+        });
+      });
+
+      return mappedSubtitlePathSet;
+    }
+
     function getSubtitleCacheSignature() {
       const version = getSubtitleDataVersion();
       const totalVideos = mappingData?.totalVideos || mappingData?.videos?.length || 0;
@@ -2173,19 +2296,27 @@
             return;
           }
 
-          if (meta.signature !== signature) {
+          const hasIncompatibleCacheVersion =
+            meta.signature && !String(meta.signature).startsWith(`${SUBTITLE_CACHE_VERSION}-`);
+
+          if (hasIncompatibleCacheVersion) {
             resolve({ cache: null, isStale: true });
             return;
           }
+
+          const isStaleSignature = meta.signature !== signature;
 
           const allRequest = subtitleStore.getAll();
           allRequest.onsuccess = () => {
             const records = allRequest.result || [];
             const cache = {};
             records.forEach((record) => {
-              cache[normalizeSubtitlePath(record.filepath)] = record.subtitles;
+              const normalizedPath = normalizeSubtitlePath(record.filepath);
+              if (normalizedPath) {
+                cache[normalizedPath] = record.subtitles;
+              }
             });
-            resolve({ cache, isStale: false });
+            resolve({ cache, isStale: isStaleSignature });
           };
           allRequest.onerror = () => resolve({ cache: null, isStale: false });
         };
@@ -2225,7 +2356,10 @@
         subtitleStore.clear();
 
         Object.entries(subtitlesByPath).forEach(([filepath, subtitles]) => {
-          subtitleStore.put({ filepath: normalizeSubtitlePath(filepath), subtitles });
+          const normalizedPath = normalizeSubtitlePath(filepath);
+          if (normalizedPath) {
+            subtitleStore.put({ filepath: normalizedPath, subtitles });
+          }
         });
 
         metaStore.put({
@@ -2235,6 +2369,50 @@
           fileCount: Object.keys(subtitlesByPath).length
         });
 
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function savePersistentSubtitleCacheEntry(signature, filepath, subtitles) {
+      const normalizedPath = normalizeSubtitlePath(filepath);
+      if (!normalizedPath) return;
+
+      const db = await openSubtitleCacheDB();
+      if (!db) return;
+
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction([SUBTITLE_STORE_NAME, SUBTITLE_META_STORE_NAME], 'readwrite');
+        const subtitleStore = tx.objectStore(SUBTITLE_STORE_NAME);
+        const metaStore = tx.objectStore(SUBTITLE_META_STORE_NAME);
+
+        const metaRequest = metaStore.get('meta');
+        metaRequest.onsuccess = () => {
+          const meta = metaRequest.result;
+          const hasIncompatibleCacheVersion =
+            meta?.signature && !String(meta.signature).startsWith(`${SUBTITLE_CACHE_VERSION}-`);
+
+          if (hasIncompatibleCacheVersion) {
+            subtitleStore.clear();
+          }
+
+          subtitleStore.put({ filepath: normalizedPath, subtitles });
+
+          const countRequest = subtitleStore.count();
+          countRequest.onsuccess = () => {
+            metaStore.put({
+              key: 'meta',
+              signature,
+              cachedAt: Date.now(),
+              fileCount: countRequest.result
+            });
+          };
+        };
+
+        metaRequest.onerror = () => reject(metaRequest.error);
         tx.oncomplete = () => {
           db.close();
           resolve();
@@ -2258,15 +2436,14 @@
         }
 
         statusElement.classList.remove('loading');
-        
+
         let statusMsg = '';
         if (mappingData) statusMsg += `${Number(mappingData.totalVideos) || 0}개 비디오 준비 완료. `;
-        statusMsg += 'AI Q&A 데이터는 AI 검색 시 불러옵니다.';
-        
-        statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${escapeHtml(statusMsg)}`;
-        
-        // 자막 파일 미리 로딩 시작
-        if (mappingData) preloadAllSubtitles();
+        statusMsg += '자막은 검색 시 필요한 파일만 불러오고, AI Q&A 데이터는 AI 검색 시 불러옵니다.';
+
+        setStatus(statusMsg, 'fas fa-check-circle');
+
+        if (mappingData) hydrateSubtitleCacheFromIndexedDB();
 
       } catch (error) {
         console.error('데이터 로드 실패:', error);
@@ -2301,142 +2478,56 @@
 
       return aiDatasetPromise;
     }
-    
-    // 모든 자막 파일 미리 로딩 함수 (ZIP 압축 해제 지원)
-    async function preloadAllSubtitles() {
+
+    async function hydrateSubtitleCacheFromIndexedDB() {
       if (!mappingData) return;
-      
-      const statusElement = document.getElementById('status');
+
       const progressBar = document.getElementById('progress-bar');
-      
-      statusElement.innerHTML = '<i class="fas fa-database"></i> 저장된 자막 캐시를 확인 중...';
-      progressBar.style.display = 'block';
-      setProgressValue(0);
-
-      const mappedSubtitlePathSet = new Set();
-      mappingData.videos.forEach((video) => {
-        video.subtitles.forEach((subtitle) => {
-          mappedSubtitlePathSet.add(normalizeSubtitlePath(subtitle.filepath));
-        });
-      });
-
+      const mappedSubtitlePathSet = getMappedSubtitlePathSet();
       const cacheSignature = getSubtitleCacheSignature();
+
       try {
         const { cache: persistedCache, isStale } = await loadPersistentSubtitleCache(cacheSignature);
-        const filteredPersistedCache = persistedCache
-          ? Object.fromEntries(
-              Object.entries(persistedCache).filter(([filepath]) => mappedSubtitlePathSet.has(filepath))
-            )
-          : null;
 
-        if (filteredPersistedCache && Object.keys(filteredPersistedCache).length === mappedSubtitlePathSet.size) {
-          subtitleCache = filteredPersistedCache;
-          setProgressValue(100);
-          progressBar.style.display = 'none';
-          statusElement.innerHTML = `<i class="fas fa-bolt"></i> 캐시에서 자막 ${Object.keys(filteredPersistedCache).length}개를 즉시 로드했습니다.`;
-
-          if (persistedCache && Object.keys(filteredPersistedCache).length !== Object.keys(persistedCache).length) {
-            try {
-              await savePersistentSubtitleCache(cacheSignature, filteredPersistedCache);
-            } catch (persistError) {
-              console.warn('정리된 캐시 재저장 실패:', persistError);
-            }
-          }
-
+        if (isStale && !persistedCache) {
+          await clearPersistentSubtitleCache();
+          subtitleCache = {};
+          setStatus('호환되지 않는 이전 자막 캐시를 초기화했습니다. 자막은 검색 시 필요한 파일만 다시 불러옵니다.', 'fas fa-info-circle');
           return;
         }
 
-        if (isStale || persistedCache) {
-          await clearPersistentSubtitleCache();
-          subtitleCache = {};
+        if (!persistedCache) {
+          return;
+        }
+
+        const filteredPersistedCache = Object.fromEntries(
+          Object.entries(persistedCache).filter(([filepath]) => mappedSubtitlePathSet.has(filepath))
+        );
+        const cachedCount = Object.keys(filteredPersistedCache).length;
+
+        if (cachedCount > 0) {
+          subtitleCache = filteredPersistedCache;
+          const cacheMessage = isStale
+            ? `기존 자막 캐시 ${cachedCount}개를 재사용합니다. 새 자막은 검색 시 개별 로드합니다.`
+            : `캐시에서 자막 ${cachedCount}개를 준비했습니다. 누락된 자막은 검색 시 개별 로드합니다.`;
+          setStatus(cacheMessage, 'fas fa-bolt');
+        }
+
+        if (isStale || cachedCount !== Object.keys(persistedCache).length) {
+          try {
+            await savePersistentSubtitleCache(cacheSignature, filteredPersistedCache);
+          } catch (persistError) {
+            console.warn('정리된 캐시 재저장 실패:', persistError);
+          }
         }
       } catch (cacheError) {
-        console.warn('영구 캐시 확인 실패, 네트워크 로딩으로 진행합니다:', cacheError);
-      }
-
-      statusElement.innerHTML = '<i class="fas fa-download"></i> 자막 압축 파일을 불러옵니다...';
-      setProgressValue(0);
-
-      try {
-        const response = await fetch(buildVersionedSubtitleUrl('subtitles.zip'), { cache: 'no-store' });
-        if (response.ok) {
-          const zipBlob = await response.blob();
-          const zip = await JSZip.loadAsync(zipBlob);
-          
-          let loadedCount = 0;
-          const files = Object.keys(zip.files).filter((name) => {
-            if (!name.endsWith('.srt') && !name.endsWith('.vtt')) {
-              return false;
-            }
-
-            return mappedSubtitlePathSet.has(normalizeSubtitlePath(name));
-          });
-          
-          for (const filename of files) {
-            const content = await zip.files[filename].async('string');
-            const subtitles = parseSRT(content);
-            // 매핑 데이터의 filepath와 동일한 키 형식으로 저장 (예: "./subtitles/001.srt")
-            // ZIP 안에 파일명만 있는 경우를 대비해 처리
-            const cacheKey = normalizeSubtitlePath(filename);
-                             
-            subtitleCache[cacheKey] = subtitles;
-            
-            loadedCount++;
-            const percentage = (loadedCount / files.length) * 100;
-            setProgressValue(percentage);
-            statusElement.innerHTML = `<i class="fas fa-file-archive"></i> 압축 해제 중... (${loadedCount}/${files.length})`;
-          }
-          
-          try {
-            await savePersistentSubtitleCache(cacheSignature, subtitleCache);
-          } catch (persistError) {
-            console.warn('영구 캐시 저장 실패:', persistError);
-          }
-
+        console.warn('영구 캐시 확인 실패:', cacheError);
+      } finally {
+        if (progressBar) {
           progressBar.style.display = 'none';
-          statusElement.innerHTML = `<i class="fas fa-check-circle"></i> ${Number(mappingData.totalVideos) || 0}개 비디오, 압축 파일 로드 완료.`;
-          return; // 성공 시 종료
+          setProgressValue(0);
         }
-      } catch (error) {
-        console.warn('ZIP 로드 실패, 개별 파일 로딩으로 전환합니다:', error);
       }
-
-      // 2. ZIP 실패 시 기존 개별 파일 로딩 방식 (Fallback)
-      const allSubtitlePaths = Array.from(mappedSubtitlePathSet);
-      
-      if (allSubtitlePaths.length === 0) return;
-      
-      statusElement.innerHTML = '<i class="fas fa-download"></i> 개별 자막파일을 불러옵니다...';
-      
-      let loadedCount = 0;
-      const PRELOAD_BATCH_SIZE = 50; 
-      
-      for (let i = 0; i < allSubtitlePaths.length; i += PRELOAD_BATCH_SIZE) {
-        const batch = allSubtitlePaths.slice(i, i + PRELOAD_BATCH_SIZE);
-        
-        await Promise.all(batch.map(async filepath => {
-          try {
-            await getParsedSubtitles(filepath);
-            loadedCount++;
-            
-            const percentage = (loadedCount / allSubtitlePaths.length) * 100;
-            setProgressValue(percentage);
-            statusElement.innerHTML = `<i class="fas fa-download"></i> 자막파일을 불러옵니다... (${loadedCount}/${allSubtitlePaths.length})`;
-          } catch (error) {
-            console.warn(`자막 파일 미리 로딩 실패: ${filepath}`, error);
-            loadedCount++;
-          }
-        }));
-      }
-      
-      try {
-        await savePersistentSubtitleCache(cacheSignature, subtitleCache);
-      } catch (persistError) {
-        console.warn('영구 캐시 저장 실패:', persistError);
-      }
-
-      progressBar.style.display = 'none';
-      statusElement.innerHTML = `<i class="fas fa-check-circle"></i> 로드 완료.`;
     }
     
     // 언어 필터 옵션 업데이트
@@ -2508,6 +2599,23 @@
       
       return languageNames[langCode] || langCode;
     }
+
+    function cancelActiveSearchForModeChange() {
+      activeSearchToken++;
+
+      const searchButton = document.getElementById('search-btn');
+      const progressBar = document.getElementById('progress-bar');
+      const resultsContainer = document.getElementById('results-container');
+
+      if (searchButton) searchButton.disabled = false;
+      if (progressBar) {
+        progressBar.style.display = 'none';
+        setProgressValue(0);
+      }
+      if (resultsContainer) {
+        resultsContainer.setAttribute('aria-busy', 'false');
+      }
+    }
     
     // 검색 실행 함수
     async function performSearch() {
@@ -2571,7 +2679,7 @@
           if (languageFilter === 'all' || subtitle.language === languageFilter) {
             subtitleFiles.push({
               videoId: video.id,
-              videoTitle: video.title,
+              videoTitle: normalizeDisplayText(video.title),
               subtitle: subtitle
             });
           }
@@ -2585,7 +2693,7 @@
         processedCount++;
         const percentage = (processedCount / subtitleFiles.length) * 100;
         setProgressValue(percentage);
-        setStatus(`검색 중... (${processedCount}/${subtitleFiles.length})`, 'fas fa-spinner fa-spin');
+        setStatus(`검색 중... (${processedCount}/${subtitleFiles.length})`, 'fas fa-spinner fa-spin', { throttleMs: 800 });
       }
       
       try {
@@ -2706,7 +2814,7 @@
       results.forEach((item, index) => {
         const highlightedQuestion = highlightSearchKeyword(item.question, keyword);
         const highlightedAnswer = highlightSearchKeyword(item.answer, keyword);
-        const sourceTitle = escapeHtml(item.source?.video_title || '');
+        const sourceTitle = escapeHtml(normalizeDisplayText(item.source?.video_title || ''));
         const sourceTimestamp = escapeHtml(item.source?.timestamp || '');
         const sourceUrl = sanitizeExternalUrl(item.source?.url);
 
@@ -2739,6 +2847,8 @@
     async function searchInSubtitle(file, keyword) {
       const filePath = file.subtitle.filepath;
       const normalizedPath = normalizeSubtitlePath(filePath);
+      if (!normalizedPath) return [];
+
       const subtitles = subtitleCache[normalizedPath];
 
       if (!subtitles) {
@@ -2910,7 +3020,7 @@
         const displayFilepath = normalizeSubtitlePath(result.subtitle.filepath);
         const safeVideoId = sanitizeYouTubeVideoId(result.videoId);
         const escapedVideoId = escapeHtml(safeVideoId || result.videoId || '');
-        const escapedVideoTitle = escapeHtml(result.videoTitle || '');
+        const escapedVideoTitle = escapeHtml(normalizeDisplayText(result.videoTitle || ''));
         const videoUrl = buildYouTubeWatchUrl(safeVideoId, 0);
         const escapedLanguageName = escapeHtml(getLanguageName(result.subtitle.language));
         
@@ -3078,6 +3188,7 @@
     // 자막 데이터 가져오기 및 캐싱 함수 (메모리 캐시 사용)
     async function getParsedSubtitles(filepath) {
         const normalizedPath = normalizeSubtitlePath(filepath);
+        if (!normalizedPath) return null;
 
         // 1. 메모리 캐시 확인
         if (subtitleCache[normalizedPath]) {
@@ -3090,7 +3201,10 @@
 
         // 2. 캐시 없으면 파일 로드 및 파싱
         subtitleLoadPromises[normalizedPath] = (async () => {
-            const response = await fetch(buildVersionedSubtitleUrl(normalizedPath), { cache: 'no-store' });
+            const subtitleUrl = buildVersionedSubtitleUrl(normalizedPath);
+            if (!subtitleUrl) return null;
+
+            const response = await fetch(subtitleUrl, { cache: 'no-store' });
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -3099,6 +3213,9 @@
 
             // 3. 메모리 캐시에 저장
             subtitleCache[normalizedPath] = subtitles;
+            savePersistentSubtitleCacheEntry(getSubtitleCacheSignature(), normalizedPath, subtitles).catch((persistError) => {
+              console.warn(`자막 파일 캐시 저장 실패: ${normalizedPath}`, persistError);
+            });
 
             return subtitles;
         })();
