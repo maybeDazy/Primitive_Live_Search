@@ -21,7 +21,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install Python dependencies
-        run: pip install youtube_transcript_api requests
+        run: pip install youtube_transcript_api requests yt-dlp
 
       - uses: actions/setup-node@v4
         with:
@@ -30,6 +30,7 @@ jobs:
       - name: Run subtitle update
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          YT_DLP_FALLBACK: 'true'
           PYTHON_BIN: python3
         run: node scripts/auto_update_subtitles.mjs
 

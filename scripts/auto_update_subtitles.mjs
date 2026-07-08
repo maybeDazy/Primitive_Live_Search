@@ -41,9 +41,7 @@ const PYTHON_BIN = process.env.PYTHON_BIN || 'python3';
 const TRANSCRIPT_PROXY = process.env.YT_TRANSCRIPT_PROXY || process.env.YT_DLP_PROXY || '';
 const RETRY_WITHOUT_PROXY_ON_BLOCK = process.env.RETRY_WITHOUT_PROXY_ON_BLOCK !== 'false';
 
-if (!API_KEY) {
-  throw new Error('YOUTUBE_API_KEY 환경변수가 필요합니다.');
-}
+const USE_YT_DLP = !API_KEY || process.env.YT_DLP_FALLBACK === 'true';
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -182,19 +180,44 @@ async function fetchJson(url, params = {}) {
 }
 
 async function fetchUploadsPlaylistId(channelId) {
-  const json = await fetchJson('https://www.googleapis.com/youtube/v3/channels', {
-    key: API_KEY,
-    id: channelId,
-    part: 'contentDetails'
-  });
-  const item = json.items?.[0];
-  if (!item?.contentDetails?.relatedPlaylists?.uploads) {
-    throw new Error('업로드 플레이리스트를 찾지 못했습니다.');
+  if (channelId.startsWith('UC')) {
+    return 'UU' + channelId.slice(2);
   }
-  return item.contentDetails.relatedPlaylists.uploads;
+  if (channelId.startsWith('UU')) {
+    return channelId;
+  }
+  throw new Error('업로드 플레이리스트 ID를 구성할 수 없습니다.');
+}
+
+async function fetchAllVideosWithYtDlp(uploadsPlaylistId) {
+  const playlistUrl = `https://www.youtube.com/playlist?list=${uploadsPlaylistId}`;
+  const { stdout } = await runCommand(PYTHON_BIN, [
+    '-m', 'yt_dlp', '--flat-playlist', '--dump-json', playlistUrl
+  ]);
+  const videos = [];
+  for (const line of stdout.trim().split('\n').filter(Boolean)) {
+    try {
+      const item = JSON.parse(line);
+      const videoId = item.id;
+      const title = item.title;
+      if (!videoId || !title) continue;
+      videos.push({
+        videoId,
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        title
+      });
+    } catch {
+      continue;
+    }
+  }
+  return videos;
 }
 
 async function fetchAllVideos(uploadsPlaylistId) {
+  if (USE_YT_DLP) {
+    return fetchAllVideosWithYtDlp(uploadsPlaylistId);
+  }
+
   const videos = [];
   let pageToken = undefined;
   let recoveredInvalidToken = false;
@@ -358,9 +381,13 @@ async function main() {
   const cutoffDate = new Date(Date.now() - MIN_VIDEO_AGE_DAYS * 24 * 60 * 60 * 1000);
   const eligibleNewVideos = allVideos.filter((v) => {
     if (knownVideoKeys.has(v.videoId) || knownVideoKeys.has(v.url)) return false;
-    if (!v.publishedAt) return false;
-    return new Date(v.publishedAt) <= cutoffDate;
-  }).sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+    if (v.publishedAt && new Date(v.publishedAt) > cutoffDate) return false;
+    return true;
+  }).sort((a, b) => {
+    const da = a.publishedAt ? new Date(a.publishedAt) : new Date(0);
+    const db = b.publishedAt ? new Date(b.publishedAt) : new Date(0);
+    return db - da;
+  });
 
   if (eligibleNewVideos.length === 0) {
     console.log(`처리 가능한 신규 영상 없음 (업로드 ${MIN_VIDEO_AGE_DAYS}일 경과 기준).`);
