@@ -1,0 +1,10 @@
+name = "primitive-live-search-ai"
+main = "worker/index.js"
+compatibility_date = "2025-02-01"
+
+[vars]
+LLM_MODEL = "deepseek-ai/deepseek-v4-flash"
+CHUNKS_URL = "https://maybeDazy.github.io/Primitive_Live_Search/subtitles/chunks.json"
+
+[env.production]
+vars = { ENVIRONMENT = "production" }

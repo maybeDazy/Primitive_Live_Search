@@ -34,6 +34,9 @@ jobs:
           PYTHON_BIN: python3
         run: node scripts/auto_update_subtitles.mjs
 
+      - name: Build chunks for AI search
+        run: node scripts/build_chunks.mjs
+
       - name: Commit and push changes
         run: |
           git config user.name 'github-actions[bot]'
