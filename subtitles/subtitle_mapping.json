@@ -1,7 +1,7 @@
 {
-  "updatedAt": "2026-06-09T19:57:07.392Z",
-  "totalVideos": 431,
-  "totalSubtitles": 432,
+  "updatedAt": "2026-07-08T12:01:48.378Z",
+  "totalVideos": 434,
+  "totalSubtitles": 435,
   "videos": [
     {
       "id": "Ls3ijHllBew",
@@ -5172,6 +5172,42 @@
           "language": "ko",
           "language_name": "한국어",
           "filepath": "./subtitles/435.srt"
+        }
+      ]
+    },
+    {
+      "id": "z0MKQRTHFoU",
+      "title": "26/6/29 날씨 참 좋네요 - 키토제닉/전래식단/재생농업 Q&A",
+      "subtitles": [
+        {
+          "filename": "436.srt",
+          "language": "ko",
+          "language_name": "한국어",
+          "filepath": "./subtitles/436.srt"
+        }
+      ]
+    },
+    {
+      "id": "Oq7xkiQqSr8",
+      "title": "26/6/22 오호츠크산 천연 에어컨 - 키토제닉/전래식단/재생농업 Q&A",
+      "subtitles": [
+        {
+          "filename": "437.srt",
+          "language": "ko",
+          "language_name": "한국어",
+          "filepath": "./subtitles/437.srt"
+        }
+      ]
+    },
+    {
+      "id": "MkAlzXUpN1U",
+      "title": "26/6/15 돌아왔습니다 - 키토제닉/전래식단/재생농업 Q&A",
+      "subtitles": [
+        {
+          "filename": "438.srt",
+          "language": "ko",
+          "language_name": "한국어",
+          "filepath": "./subtitles/438.srt"
         }
       ]
     }
