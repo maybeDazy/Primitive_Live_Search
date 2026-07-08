@@ -61,7 +61,17 @@ function groupIntoChunks(entries, linesPerChunk, overlap) {
     const slice = entries.slice(i, i + linesPerChunk);
     if (slice.length === 0) break;
 
-    const text = slice.map(e => e.text).join(' ');
+    let lastText = '';
+    const uniqueTexts = [];
+    for (const e of slice) {
+      const t = e.text.trim();
+      if (t && t !== lastText) {
+        uniqueTexts.push(t);
+        lastText = t;
+      }
+    }
+
+    const text = uniqueTexts.join(' ');
     if (text.length < 20) {
       i += linesPerChunk;
       continue;
@@ -116,7 +126,7 @@ async function main() {
         e: c.end,
         ts: secondsToTimeStr(c.start),
         te: secondsToTimeStr(c.end),
-        x: c.text.slice(0, 2000)
+        x: c.text.slice(0, 800)
       });
     }
 
