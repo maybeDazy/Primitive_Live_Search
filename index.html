@@ -1014,6 +1014,153 @@
         font-size: 12px;
       }
     }
+
+    /* === Chat UI for AI Q&A === */
+    .ai-disclaimer {
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: rgba(66, 133, 244, 0.08);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .ai-disclaimer i {
+      color: var(--secondary-color);
+    }
+
+    .chat-container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .chat-message {
+      display: flex;
+      gap: 12px;
+      animation: chatFadeIn 0.3s ease;
+    }
+
+    @keyframes chatFadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .chat-message.user {
+      flex-direction: row-reverse;
+    }
+
+    .chat-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 14px;
+    }
+
+    .chat-avatar.user-avatar {
+      background: linear-gradient(135deg, var(--secondary-color), #1a5bc7);
+      color: white;
+    }
+
+    .chat-avatar.ai-avatar {
+      background: linear-gradient(135deg, var(--accent-color), #1a7a3a);
+      color: white;
+    }
+
+    .chat-bubble {
+      max-width: 80%;
+      padding: 14px 18px;
+      border-radius: 18px;
+      font-size: 15px;
+      line-height: 1.6;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+
+    .chat-bubble.user-bubble {
+      background: linear-gradient(135deg, var(--secondary-color), #1a5bc7);
+      color: white;
+      border-bottom-right-radius: 6px;
+    }
+
+    .chat-bubble.ai-bubble {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-bottom-left-radius: 6px;
+      color: var(--text-color);
+    }
+
+    [data-theme="dark"] .chat-bubble.ai-bubble {
+      background: #2d2e33;
+    }
+
+    .chat-bubble.ai-bubble.streaming::after {
+      content: '|';
+      animation: cursorBlink 0.8s step-end infinite;
+      color: var(--accent-color);
+      font-weight: 700;
+      margin-left: 2px;
+    }
+
+    @keyframes cursorBlink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    .chat-sources {
+      margin-top: 4px;
+      margin-left: 48px;
+      padding: 12px 16px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      border-left: 3px solid var(--secondary-color);
+      font-size: 13px;
+      animation: chatFadeIn 0.3s ease;
+    }
+
+    [data-theme="dark"] .chat-sources {
+      background: #2d2e33;
+    }
+
+    .chat-sources-title {
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .chat-source-item {
+      display: flex;
+      gap: 8px;
+      padding: 6px 0;
+    }
+
+    .chat-source-item a {
+      color: var(--secondary-color);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .chat-source-item a:hover {
+      text-decoration: underline;
+    }
+
+    .chat-source-preview {
+      color: var(--text-secondary);
+      font-size: 12px;
+      margin-top: 2px;
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
@@ -1063,6 +1210,9 @@
       </div>
       
       <div id="status" class="status" role="status" aria-live="polite"></div>
+      <div id="ai-disclaimer" class="ai-disclaimer" style="display: none;">
+        <i class="fas fa-info-circle"></i> AI 답변은 자막 데이터를 기반으로 생성되며, 부정확할 수 있습니다.
+      </div>
       <div class="progress-container">
         <div class="progress-bar" id="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <div class="progress" id="progress"></div>
@@ -2786,36 +2936,142 @@
       const resultsContainer = document.getElementById('results-container');
 
       setStatus('AI가 자막을 분석하여 답변을 생성 중입니다...', 'fas fa-spinner fa-spin');
-      resultsContainer.style.display = 'none';
+      resultsContainer.style.display = 'block';
       resultsContainer.setAttribute('aria-busy', 'true');
 
-      let answerData;
+      // Clear old results and show chat UI
+      const resultsElement = document.getElementById('results');
+      const summaryElement = document.getElementById('summary');
+      summaryElement.innerHTML = '';
+      renderPartnerLinks('');
+      resultsElement.innerHTML = `
+        <div class="chat-container">
+          <div class="chat-message user">
+            <div class="chat-avatar user-avatar">
+              <i class="fas fa-user"></i>
+            </div>
+            <div class="chat-bubble user-bubble">${escapeHtml(keyword)}</div>
+          </div>
+          <div class="chat-message ai">
+            <div class="chat-avatar ai-avatar">
+              <i class="fas fa-robot"></i>
+            </div>
+            <div class="chat-bubble ai-bubble streaming" id="ai-answer"></div>
+          </div>
+        </div>
+      `;
+
+      const answerEl = document.getElementById('ai-answer');
+      let fullAnswer = '';
+      let sourcesData = null;
+
       try {
         const resp = await fetch(`${AI_API_URL}/api/ask`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: keyword, topK: 10 })
+          body: JSON.stringify({ question: keyword, topK: 10, stream: true })
         });
-        if (!resp.ok) throw new Error(`API 오류: ${resp.status}`);
-        answerData = await resp.json();
+
+        if (!resp.ok) {
+          const err = await resp.text();
+          throw new Error(`API 오류: ${resp.status}`);
+        }
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let currentEvent = '';
+        let currentData = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (searchToken !== activeSearchToken) return;
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n');
+          buffer = parts.pop() || '';
+
+          for (const line of parts) {
+            if (line.startsWith('event: ')) {
+              currentEvent = line.slice(7).trim();
+            } else if (line.startsWith('data: ')) {
+              currentData = line.slice(6).trim();
+              if (currentEvent && currentData) {
+                try {
+                  const parsed = JSON.parse(currentData);
+                  if (currentEvent === 'token') {
+                    fullAnswer += parsed.content;
+                    answerEl.textContent = fullAnswer;
+                    // Auto-scroll
+                    answerEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  } else if (currentEvent === 'sources') {
+                    sourcesData = parsed;
+                  } else if (currentEvent === 'done') {
+                    answerEl.classList.remove('streaming');
+                    if (sourcesData && sourcesData.length > 0) {
+                      renderChatSources(sourcesData);
+                    }
+                  } else if (currentEvent === 'error') {
+                    throw new Error(parsed.message);
+                  }
+                } catch (e) {
+                  if (e.message !== 'Unexpected end of JSON input') throw e;
+                }
+                currentEvent = '';
+                currentData = '';
+              }
+            }
+          }
+        }
       } catch (error) {
         console.error('AI Q&A API 호출 실패:', error);
         if (searchToken === activeSearchToken) {
+          if (answerEl) {
+            answerEl.classList.remove('streaming');
+            answerEl.textContent = fullAnswer || '죄송합니다. 답변을 생성할 수 없습니다.';
+          }
           setStatus('AI 답변을 생성할 수 없습니다. 잠시 후 다시 시도하세요.', 'fas fa-exclamation-circle');
           resultsContainer.setAttribute('aria-busy', 'false');
         }
         return;
       }
 
-      if (searchToken !== activeSearchToken) return;
-
-      setStatus('검색 완료', 'fas fa-check-circle');
-      resultsContainer.style.display = 'block';
-      resultsContainer.setAttribute('aria-busy', 'false');
-      displayAIResults(answerData, keyword);
+      if (searchToken === activeSearchToken) {
+        setStatus('검색 완료', 'fas fa-check-circle');
+        resultsContainer.setAttribute('aria-busy', 'false');
+      }
     }
 
-    // AI Q&A 결과 표시 함수
+    function renderChatSources(sources) {
+      if (!sources || sources.length === 0) return;
+
+      const container = document.querySelector('.chat-container');
+      if (!container) return;
+
+      const sourcesDiv = document.createElement('div');
+      sourcesDiv.className = 'chat-sources';
+      sourcesDiv.innerHTML = `
+        <div class="chat-sources-title">
+          <i class="fas fa-book-open"></i> 참조한 자막
+        </div>
+        ${sources.map((src, i) => `
+          <div class="chat-source-item">
+            <span style="color: var(--secondary-color); font-weight: 700; min-width: 20px;">${i + 1}</span>
+            <div>
+              <a href="${sanitizeExternalUrl(src.videoUrl)}" target="_blank" rel="noopener noreferrer">
+                <i class="fab fa-youtube"></i> ${escapeHtml(normalizeDisplayText(src.videoTitle || ''))} (${escapeHtml(src.startTime || '')})
+              </a>
+              <div class="chat-source-preview">${escapeHtml((src.text || '').slice(0, 120))}...</div>
+            </div>
+          </div>
+        `).join('')}
+      `;
+
+      container.appendChild(sourcesDiv);
+    }
+
+    // AI Q&A 결과 표시 함수 (legacy - non-streaming fallback)
     function displayAIResults(data, keyword) {
       const resultsElement = document.getElementById('results');
       const summaryElement = document.getElementById('summary');

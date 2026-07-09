@@ -3,7 +3,7 @@ main = "worker/index.js"
 compatibility_date = "2025-02-01"
 
 [vars]
-LLM_MODEL = "deepseek-ai/deepseek-v4-flash"
+LLM_MODEL = "qwen/qwen3.5-122b-a10b"
 CHUNKS_URL = "https://maybeDazy.github.io/Primitive_Live_Search/subtitles/chunks.json"
 
 [env.production]
