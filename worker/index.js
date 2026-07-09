@@ -67,26 +67,25 @@ function buildContextText(topChunks) {
   return topChunks.map((c, i) => {
     const ch = c.chunk;
     return `[출처 ${i + 1}]
-제목: ${ch.t}
-링크: ${ch.u}
-시간: ${ch.ts}
 내용: ${ch.x}`;
   }).join('\n\n---\n\n');
 }
 
-const SYSTEM_PROMPT = `당신은 유튜브 채널 "프리미티브"의 영상 자막을 기반으로 질문에 답변하는 AI 어시스턴트입니다.
+const SYSTEM_PROMPT = `당신은 유튜브 채널 "프리미티브"의 영상 자막을 기반으로 질문에 답변하는 AI 어시스턴트입니다. 이 채널은 키토제닉(저탄고지), 카니보어(육식), 전래식단, 재생농업, 건강, 영양, 소고기/양고기 등의 동물성 식품에 대해 다룹니다.
 
-## 역할
-- 주어진 자막 컨텍스트만 사용하여 질문에 답변하세요.
-- 컨텍스트에 없는 내용은 추측하지 말고 "자막에서 찾을 수 없는 내용입니다"라고 말하세요.
-- 답변은 한국어로 간결하고 정확하게 작성하세요. (2~3문장)
-- **출처(영상 제목, 타임스탬프)는 답변에 포함하지 마세요.** 출처는 별도로 표시됩니다.
+## 핵심 규칙
+- 주어진 자막 컨텍스트만 사용하여 답변하세요.
+- 컨텍스트에 없는 내용은 절대 추측하지 말고 "자막에서 찾을 수 없는 내용입니다"라고 말하세요.
+- 답변은 한국어로 2~3문장으로 간결하게 작성하세요.
+- **출처 정보(영상 제목, 타임스탬프, URL)는 절대 포함하지 마세요.**
+- 질문과 관련된 구체적인 용어나 수치가 컨텍스트에 있으면 반드시 활용하세요.
+- 답변은 확신을 가지고 작성하되, 컨텍스트 범위를 넘지 마세요.
 
 ## 예시
 
-질문: "올리브 절이는 방법이 뭐야?"
-컨텍스트: [출처 1] ...올리브 대형으로 절인 올리브 10열 개... [출처 2] ...식초 적당히 넣으면 효과가...
-답변: 올리브를 절일 때는 대형 올리브를 사용하며, 식초를 적당량(4리터에 15ml 정도) 넣으면 효과적입니다.
+질문: "버터 대신 코코넛오일을 써도 돼?"
+컨텍스트: [출처 1] ...코코넛 오일은 중쇄지방산이 많아서 장누수를 일으킨다는 논문이 있는데... [출처 2] ...코코넛 오일에 대한 이야기가 많은데 저는 코코넛 오일을 일부러 먹지 않는 이유가...
+답변: 자막에 따르면 코코넛 오일은 중쇄지방산 함량이 높으며 장누수와 관련된 논문이 있어, 일부러 섭취하지 않는 것이 좋을 수 있습니다. 컨텍스트에서 버터 대신 사용하는 것에 대한 직접적인 비교는 찾을 수 없었습니다.
 
 질문: "비트코인 시세가 어떻게 되?"
 컨텍스트: [출처 1] ...오늘 날씨가 참 좋네요... [출처 2] ...고양이 키우는 법...
@@ -170,12 +169,12 @@ async function streamAnswer(question, topChunks, sources, env) {
 
   (async () => {
     try {
-      // Send sources first
       await writer.write(encoder.encode(encodeSSE('sources', sources)));
 
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let hasContent = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -194,10 +193,15 @@ async function streamAnswer(question, topChunks, sources, env) {
             const parsed = JSON.parse(payload);
             const content = parsed.choices?.[0]?.delta?.content || '';
             if (content) {
+              hasContent = true;
               await writer.write(encoder.encode(encodeSSE('token', { content })));
             }
           } catch {}
         }
+      }
+
+      if (!hasContent) {
+        await writer.write(encoder.encode(encodeSSE('token', { content: '자막에서 관련 내용을 찾을 수 없습니다.' })));
       }
 
       await writer.write(encoder.encode(encodeSSE('done', {})));
