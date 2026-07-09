@@ -7,7 +7,23 @@ async function getChunks(env) {
   chunksPromise = (async () => {
     const resp = await fetch(env.CHUNKS_URL);
     const data = await resp.json();
-    chunksCache = data.chunks;
+    if (data.version === 3) {
+      const videos = data.videos;
+      chunksCache = data.chunks.map(c => ({
+        x: c.x,
+        v: c.s,
+        t: videos[c.i].t,
+        u: videos[c.i].u,
+        ts: (() => {
+          const h = Math.floor(c.s / 3600);
+          const m = Math.floor((c.s % 3600) / 60);
+          const s = Math.floor(c.s % 60);
+          return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        })()
+      }));
+    } else {
+      chunksCache = data.chunks;
+    }
     return chunksCache;
   })();
   return chunksPromise;

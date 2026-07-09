@@ -8,8 +8,8 @@ const SUBTITLES_DIR = path.join(ROOT_DIR, 'subtitles');
 const MAPPING_PATH = path.join(SUBTITLES_DIR, 'subtitle_mapping.json');
 const OUTPUT_PATH = path.join(SUBTITLES_DIR, 'chunks.json');
 
-const CHUNK_LINES = Number.parseInt(process.env.CHUNK_LINES || '80', 10);
-const CHUNK_OVERLAP = Number.parseInt(process.env.CHUNK_OVERLAP || '15', 10);
+const CHUNK_LINES = Number.parseInt(process.env.CHUNK_LINES || '250', 10);
+const CHUNK_OVERLAP = Number.parseInt(process.env.CHUNK_OVERLAP || '0', 10);
 
 function timeToSeconds(ts) {
   const m = ts.match(/(\d+):(\d+):(\d+)(?:[.,](\d+))?/);
@@ -126,7 +126,7 @@ async function main() {
         e: c.end,
         ts: secondsToTimeStr(c.start),
         te: secondsToTimeStr(c.end),
-        x: c.text.slice(0, 800)
+        x: c.text.slice(0, 400)
       });
     }
 
@@ -135,15 +135,28 @@ async function main() {
     }
   }
 
+  // Dedup repeated video titles: store videos once, chunk only refs video index
+  const videoMapArr = [...videoMap].map(([filename, info]) => ({
+    v: info.videoId, t: info.title, u: info.url
+  }));
+  const videoIndex = new Map(videoMapArr.map((v, i) => [v.v, i]));
+
+  const compactChunks = chunkResults.map(c => ({
+    i: videoIndex.get(c.v),
+    s: c.s,
+    x: c.x.slice(0, 600)
+  }));
+
   const outputData = {
-    version: 2,
-    totalChunks: chunkResults.length,
+    version: 3,
+    totalChunks: compactChunks.length,
     createdAt: new Date().toISOString(),
-    chunks: chunkResults
+    videos: videoMapArr,
+    chunks: compactChunks
   };
 
   fs.writeFileSync(OUTPUT_PATH, JSON.stringify(outputData));
-  console.log(`Done: ${chunkResults.length} chunks written to ${OUTPUT_PATH}`);
+  console.log(`Done: ${compactChunks.length} chunks written to ${OUTPUT_PATH}`);
   console.log(`File size: ${(fs.statSync(OUTPUT_PATH).size / 1024 / 1024).toFixed(1)} MB`);
 }
 
