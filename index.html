@@ -27,17 +27,21 @@
       --radius-md: 12px;
       --radius-lg: 16px;
     }
+
+    body {
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
     
     [data-theme="dark"] {
-      --bg-color: #202124;
-      --card-bg: #2d2e33;
-      --text-color: #e8eaed;
-      --text-secondary: #9aa0a6;
-      --border-color: #3c4043;
+      --bg-color: #121212;
+      --card-bg: #1e1e22;
+      --text-color: #e4e4e7;
+      --text-secondary: #a1a1aa;
+      --border-color: #2e2e34;
       --highlight-color: rgba(255, 213, 79, 0.5);
-      --shadow-sm: 0 1px 3px rgba(0,0,0,0.5);
-      --shadow-md: 0 4px 6px rgba(0,0,0,0.4);
-      --shadow-lg: 0 10px 15px rgba(0,0,0,0.4);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.6);
+      --shadow-md: 0 4px 6px rgba(0,0,0,0.5);
+      --shadow-lg: 0 10px 15px rgba(0,0,0,0.5);
     }
     
     * {
@@ -84,12 +88,21 @@
       position: absolute;
       top: 0;
       right: 0;
-      background: none;
-      border: none;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
       color: var(--text-secondary);
-      font-size: 1.5rem;
+      font-size: 1.2rem;
       cursor: pointer;
-      padding: 5px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      transition: var(--transition);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .theme-toggle:hover {
+      color: var(--text-color);
+      border-color: var(--text-secondary);
+      box-shadow: var(--shadow-md);
     }
     
     header h1 {
@@ -134,7 +147,7 @@
       box-shadow: var(--shadow-md);
       padding: 30px;
       margin-bottom: 30px;
-      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      transition: background-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
     }
     
     .search-container:hover {
@@ -309,6 +322,7 @@
       margin-bottom: 30px;
       display: none;
       animation: fadeIn 0.5s ease;
+      transition: background-color 0.3s ease;
     }
     
     @keyframes fadeIn {
@@ -436,7 +450,7 @@
     }
     
     [data-theme="dark"] .subtitle-match {
-      background-color: rgba(255, 255, 255, 0.05);
+      background-color: rgba(255, 255, 255, 0.04);
     }
     
     .subtitle-match:hover {
@@ -526,15 +540,32 @@
     /* Responsive styles */
     @media (max-width: 768px) {
       .container {
-        padding: 20px 15px;
+        padding: 16px 12px;
       }
       
+      header {
+        margin-bottom: 28px;
+      }
+
       header h1 {
-        font-size: 1.8rem;
+        font-size: 1.4rem;
+        line-height: 1.35;
       }
-      
+
+      header p {
+        font-size: 0.95rem;
+      }
+
+      .theme-toggle {
+        position: static;
+        display: flex;
+        margin: 0 auto 8px;
+        font-size: 1.3rem;
+      }
+
       .search-container, .results-container {
-        padding: 20px;
+        padding: 18px;
+        border-radius: var(--radius-md);
       }
       
       .search-form {
@@ -546,26 +577,88 @@
         width: 100%;
       }
       
+      .search-input {
+        padding: 14px 16px 14px 44px;
+        font-size: 15px;
+      }
+
       .search-btn {
         width: 100%;
         justify-content: center;
+        padding: 14px;
       }
       
       .options {
         flex-direction: column;
-        gap: 15px;
+        gap: 12px;
       }
       
       .video-meta {
         flex-direction: column;
         align-items: flex-start;
-        gap: 8px;
+        gap: 6px;
+      }
+
+      .subtitle-match {
+        padding: 12px 14px;
+      }
+
+      .match-context {
+        font-size: 14px;
+      }
+
+      .match-controls {
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .inline-play-btn, .match-time, .load-more-btn {
+        font-size: 12px;
+        padding: 5px 10px;
+      }
+
+      .chat-bubble {
+        max-width: 90%;
+        font-size: 14px;
+        padding: 12px 14px;
+      }
+
+      .chat-avatar {
+        width: 30px;
+        height: 30px;
+        font-size: 12px;
+      }
+
+      .chat-sources {
+        margin-left: 0;
+        padding: 10px 12px;
+      }
+
+      .search-tabs {
+        gap: 6px;
+      }
+
+      .search-tab {
+        font-size: 13px;
+        padding: 8px 12px;
+        flex: 1;
+        text-align: center;
+      }
+
+      .video-title {
+        font-size: 16px;
+      }
+
+      .affiliate-disclosure {
+        font-size: 12px;
+        padding: 10px 12px;
+        margin: -8px auto 18px;
       }
 
       .inline-player-panel {
-        right: 12px;
-        bottom: 12px;
-        width: calc(100vw - 24px);
+        right: 8px;
+        bottom: 8px;
+        width: calc(100vw - 16px);
       }
 
       .inline-player-header {
@@ -577,7 +670,16 @@
       }
 
       .inline-player-shell {
-        min-height: 210px;
+        min-height: 180px;
+      }
+
+      .result-group {
+        margin-bottom: 20px;
+        padding-bottom: 18px;
+      }
+
+      .subtitle-matches {
+        gap: 10px;
       }
     }
     
@@ -607,13 +709,22 @@
       color: var(--text-secondary);
       cursor: pointer;
       font-weight: 500;
-      transition: var(--transition);
+      transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+
+    .search-tab:hover {
+      border-color: var(--secondary-color);
+      color: var(--text-color);
     }
 
     .search-tab.active {
       background-color: var(--secondary-color);
       color: white;
       border-color: var(--secondary-color);
+    }
+
+    .search-tab.active:hover {
+      color: white;
     }
 
     .qa-result-item {
@@ -1079,7 +1190,7 @@
       padding: 14px 18px;
       border-radius: 18px;
       font-size: 15px;
-      line-height: 1.6;
+      line-height: 1.65;
       word-break: break-word;
       white-space: pre-wrap;
     }
@@ -1098,7 +1209,7 @@
     }
 
     [data-theme="dark"] .chat-bubble.ai-bubble {
-      background: #2d2e33;
+      background: #1e1e22;
     }
 
     .chat-bubble.ai-bubble.streaming::after {
@@ -1124,10 +1235,7 @@
       border-left: 3px solid var(--secondary-color);
       font-size: 13px;
       animation: chatFadeIn 0.3s ease;
-    }
-
-    [data-theme="dark"] .chat-sources {
-      background: #2d2e33;
+      transition: background-color 0.3s ease, border-color 0.3s ease;
     }
 
     .chat-sources-title {
@@ -1169,7 +1277,7 @@
       <button id="theme-toggle" class="theme-toggle" type="button" aria-label="다크 모드 켜기" aria-pressed="false">
         <i class="fas fa-moon"></i>
       </button>
-      <h1>프리미티브 라이브 영상 자막 검색기 <span style="font-size: 0.6em; color: var(--text-secondary);">by 로우</span></h1>
+      <h1>프리미티브 라이브 자막 검색기</h1>
       <p>다운로드한 자막 파일에서 내용을 검색하고 원하는 순간으로 이동하세요</p>
     </header>
 
@@ -1230,8 +1338,8 @@
   <div id="inline-player-panel" class="inline-player-panel" hidden>
     <div class="inline-player-header">
       <div class="inline-player-meta">
-        <div class="inline-player-label">Mini Player</div>
-        <div id="inline-player-title" class="inline-player-title">재생할 자막 구간을 선택하세요</div>
+        <div class="inline-player-label">미니 플레이어</div>
+        <div id="inline-player-title" class="inline-player-title">재생할 구간을 선택하세요</div>
       </div>
       <div class="inline-player-actions">
         <a id="inline-player-link" class="inline-player-link" href="https://youtube.com" target="_blank" rel="noopener noreferrer">
@@ -1244,7 +1352,7 @@
         </button>
       </div>
     </div>
-    <div id="inline-player-status" class="inline-player-status">이 페이지에서 영상 구간을 바로 재생할 수 있습니다.</div>
+    <div id="inline-player-status" class="inline-player-status"></div>
     <div class="inline-player-shell">
       <div id="inline-player-frame" class="inline-player-frame"></div>
     </div>
@@ -2632,8 +2740,7 @@
         statusElement.classList.remove('loading');
 
         let statusMsg = '';
-        if (mappingData) statusMsg += `${Number(mappingData.totalVideos) || 0}개 비디오 준비 완료. `;
-        statusMsg += '자막은 검색 시 필요한 파일만 불러오고, AI Q&A 데이터는 AI 검색 시 불러옵니다.';
+        if (mappingData) statusMsg += `${Number(mappingData.totalVideos) || 0}개 비디오 준비 완료.`;
 
         setStatus(statusMsg, 'fas fa-check-circle');
 
@@ -2935,7 +3042,7 @@
     async function performAISearch(keyword, searchToken = activeSearchToken) {
       const resultsContainer = document.getElementById('results-container');
 
-      setStatus('AI가 자막을 분석하여 답변을 생성 중입니다...', 'fas fa-spinner fa-spin');
+      setStatus('답변 생성 중...', 'fas fa-spinner fa-spin');
       resultsContainer.style.display = 'block';
       resultsContainer.setAttribute('aria-busy', 'true');
 
