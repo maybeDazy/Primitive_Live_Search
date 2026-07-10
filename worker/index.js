@@ -11,14 +11,15 @@ async function getChunks(env) {
       const videos = data.videos;
       chunksCache = data.chunks.map(c => ({
         x: c.x,
-        v: c.s,
+        v: videos[c.i].v,
+        s: c.s,
         t: videos[c.i].t,
         u: videos[c.i].u,
         ts: (() => {
           const h = Math.floor(c.s / 3600);
           const m = Math.floor((c.s % 3600) / 60);
-          const s = Math.floor(c.s % 60);
-          return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+          const sec = Math.floor(c.s % 60);
+          return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
         })()
       }));
     } else {
@@ -92,16 +93,16 @@ const SYSTEM_PROMPT = `당신은 유튜브 채널 "프리미티브"의 영상 �
 ## 핵심 규칙
 - 주어진 자막 컨텍스트만 사용하여 답변하세요.
 - 컨텍스트에 없는 내용은 절대 추측하지 말고 "자막에서 찾을 수 없는 내용입니다"라고 말하세요.
-- 답변은 한국어로 2~3문장으로 간결하게 작성하세요.
-- **출처 정보(영상 제목, 타임스탬프, URL)는 절대 포함하지 마세요.**
+- 답변은 한국어로 2~3문장으로 간결하게, 마치 영상을 본 사람이 자연스럽게 설명하는 듯한 말투로 작성하세요.
+- 출처 영상 제목이나 타임스탬프는 절대 포함하지 마세요. 대신 "채널에서 설명하기를", "자막에 따르면", "영상에서는 ~라고 합니다" 등의 자연스러운 인용 표현을 사용하세요.
 - 질문과 관련된 구체적인 용어나 수치가 컨텍스트에 있으면 반드시 활용하세요.
 - 답변은 확신을 가지고 작성하되, 컨텍스트 범위를 넘지 마세요.
 
 ## 예시
 
-질문: "버터 대신 코코넛오일을 써도 돼?"
-컨텍스트: [출처 1] ...코코넛 오일은 중쇄지방산이 많아서 장누수를 일으킨다는 논문이 있는데... [출처 2] ...코코넛 오일에 대한 이야기가 많은데 저는 코코넛 오일을 일부러 먹지 않는 이유가...
-답변: 자막에 따르면 코코넛 오일은 중쇄지방산 함량이 높으며 장누수와 관련된 논문이 있어, 일부러 섭취하지 않는 것이 좋을 수 있습니다. 컨텍스트에서 버터 대신 사용하는 것에 대한 직접적인 비교는 찾을 수 없었습니다.
+질문: "계란 많이 먹어도 돼?"
+컨텍스트: [출처 1] ...계란은 완전단백질 식품으로 콜레스테롤 수치에 큰 영향을 주지 않는다는 연구 결과들이 있습니다... [출처 2] ...하루에 계란을 5~6개씩 먹어도 건강에 문제없다는 내용을 다뤘습니다...
+답변: 채널에서 계란은 완전단백질 식품이며, 하루 5~6개 정도 섭취해도 콜레스테롤 수치에 큰 영향을 주지 않는다고 설명합니다. 다만 개인별 건강 상태에 따라 차이가 있을 수 있습니다.
 
 질문: "비트코인 시세가 어떻게 되?"
 컨텍스트: [출처 1] ...오늘 날씨가 참 좋네요... [출처 2] ...고양이 키우는 법...
@@ -113,7 +114,7 @@ async function generateAnswer(question, topChunks, env) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60000);
 
-  const model = env.LLM_MODEL || 'moonshotai/kimi-k2.6';
+  const model = env.LLM_MODEL || 'qwen/qwen3.5-122b-a10b';
 
   const resp = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
     method: 'POST',
@@ -149,7 +150,7 @@ function encodeSSE(event, data) {
 
 async function streamAnswer(question, topChunks, sources, env) {
   const context = buildContextText(topChunks);
-  const model = env.LLM_MODEL || 'moonshotai/kimi-k2.6';
+  const model = env.LLM_MODEL || 'qwen/qwen3.5-122b-a10b';
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 60000);
@@ -275,6 +276,7 @@ export default {
           videoTitle: c.chunk.t,
           videoUrl: c.chunk.u,
           startTime: c.chunk.ts,
+          startSeconds: c.chunk.s || 0,
           text: c.chunk.x.slice(0, 200)
         }));
 
@@ -319,6 +321,7 @@ export default {
             videoTitle: c.chunk.t,
             videoUrl: c.chunk.u,
             startTime: c.chunk.ts,
+            startSeconds: c.chunk.s || 0,
             text: c.chunk.x.slice(0, 300)
           }))
         }), { headers: corsHeaders });

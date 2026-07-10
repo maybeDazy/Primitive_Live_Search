@@ -1269,6 +1269,23 @@
       margin-top: 2px;
       line-height: 1.4;
     }
+
+    .chat-source-time {
+      display: inline-block;
+      background: var(--secondary-color);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 7px;
+      border-radius: 9px;
+      line-height: 1.6;
+      white-space: nowrap;
+      letter-spacing: 0.3px;
+    }
+
+    .chat-source-item a:hover .chat-source-time {
+      opacity: 0.85;
+    }
   </style>
 </head>
 <body>
@@ -3162,17 +3179,20 @@
         <div class="chat-sources-title">
           <i class="fas fa-book-open"></i> 참조한 자막
         </div>
-        ${sources.map((src, i) => `
+        ${sources.map((src, i) => {
+          const href = sanitizeExternalUrl(src.videoUrl + '&t=' + (src.startSeconds ? Math.floor(src.startSeconds) : 0));
+          return `
           <div class="chat-source-item">
             <span style="color: var(--secondary-color); font-weight: 700; min-width: 20px;">${i + 1}</span>
             <div>
-              <a href="${sanitizeExternalUrl(src.videoUrl)}" target="_blank" rel="noopener noreferrer">
-                <i class="fab fa-youtube"></i> ${escapeHtml(normalizeDisplayText(src.videoTitle || ''))} (${escapeHtml(src.startTime || '')})
+              <a href="${href}" target="_blank" rel="noopener noreferrer" style="display: flex; align-items: center; gap: 6px;">
+                <i class="fab fa-youtube"></i> ${escapeHtml(normalizeDisplayText(src.videoTitle || ''))}
+                ${src.startTime ? `<span class="chat-source-time">▶ ${escapeHtml(src.startTime)}</span>` : ''}
               </a>
               <div class="chat-source-preview">${escapeHtml((src.text || '').slice(0, 120))}...</div>
             </div>
-          </div>
-        `).join('')}
+          </div>`;
+        }).join('')}
       `;
 
       container.appendChild(sourcesDiv);
