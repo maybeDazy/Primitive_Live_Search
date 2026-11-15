@@ -1,7 +1,7 @@
 {
-  "updatedAt": "2026-07-08T12:01:48.378Z",
-  "totalVideos": 434,
-  "totalSubtitles": 435,
+  "updatedAt": "2026-11-15T08:35:11.117Z",
+  "totalVideos": 436,
+  "totalSubtitles": 437,
   "videos": [
     {
       "id": "Ls3ijHllBew",
@@ -5208,6 +5208,30 @@
           "language": "ko",
           "language_name": "한국어",
           "filepath": "./subtitles/438.srt"
+        }
+      ]
+    },
+    {
+      "id": "sGQf23x3xgs",
+      "title": "26/9/28 추석 잘 보내셨나요? - 키토제닉/전래식단/재생농업 Q&A",
+      "subtitles": [
+        {
+          "filename": "442.srt",
+          "language": "ko",
+          "language_name": "한국어",
+          "filepath": "./subtitles/442.srt"
+        }
+      ]
+    },
+    {
+      "id": "r0Mveg2q2Bo",
+      "title": "The Reason You Keep Falling for These: \"Belief\"",
+      "subtitles": [
+        {
+          "filename": "443.srt",
+          "language": "ko",
+          "language_name": "한국어",
+          "filepath": "./subtitles/443.srt"
         }
       ]
     }
